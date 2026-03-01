@@ -103,7 +103,7 @@ Un Operatore può gestire più linee da una singola postazione. Più Operatori p
 Stampata via `react-to-print`. Contenuto: Prodotto Grezzo, Varietà, Articolo, Colli, Peso, Lotto ingresso, Data confezionamento, `codice_pedana` (in grande).
 
 ### Anagrafiche (Admin)
-Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto, Lotti Ingresso. Nessuna cancellazione fisica — disattivazione tramite flag `attivo`. Vedi schema completo in `SCHEMA.md`.
+Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto, Lotti Ingresso. Nessuna cancellazione fisica — soft delete con `is_active` (`false` = disattivato), tracciato con `deleted_at` e `deleted_by`. Vedi schema completo in `SCHEMA.md`.
 
 ### Report
 Filtro per data o intervallo. Export PDF, Excel, CSV.
@@ -130,13 +130,13 @@ Filtro per data o intervallo. Export PDF, Excel, CSV.
 | Scarto senza lavorazioni aperte | Permesso. L'Operatore seleziona qualsiasi lotto ingresso esistente. |
 | Reset totali cruscotto | Totali barra riepilogo riferiti al giorno corrente (dalla mezzanotte). |
 | Lavorazione aperta il giorno precedente | Resta visibile nel cruscotto fino a chiusura manuale. Attribuita alla data di apertura nei report. |
-| Cancellazione record | Nessun record cancellato fisicamente. Anagrafiche disattivabili con `attivo = false`. Dati produttivi modificabili solo con traccia audit. |
+| Cancellazione record | Nessun record cancellato fisicamente. Anagrafiche disattivabili via soft delete (`is_active`, `deleted_at`, `deleted_by`). Dati produttivi modificabili solo con traccia audit. |
 
 ---
 
 ## Audit Log
 
-Copre tutte le tabelle: anagrafiche, lavorazioni, pedane, scarti. Ogni INSERT, UPDATE e disattivazione genera una riga. Immutabile: solo INSERT permesso, mai UPDATE o DELETE. Accessibile in lettura solo all'Admin. Vedi struttura completa in `SCHEMA.md §audit_log`.
+Copre tutte le tabelle: anagrafiche, lavorazioni, pedane, scarti. Ogni INSERT, UPDATE, soft delete e restore genera una riga. Immutabile: solo INSERT permesso, mai UPDATE o DELETE. Accessibile in lettura solo all'Admin. Vedi struttura completa in `SCHEMA.md §audit_log`.
 
 ---
 
