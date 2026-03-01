@@ -20,6 +20,11 @@
 - [ ] Generare e mostrare `codice_pedana` con stampa etichetta.
 - [ ] Implementare FAB + modal registrazione scarto con anteprima percentuale.
 
+## Anagrafiche (Admin)
+- [x] Implementare interfaccia anagrafiche con tab dedicate per linea/prodotto/varietà/imballaggio/articolo/sigle/lotti ingresso.
+- [x] Aggiungere filtri avanzati (ricerca testuale, stato, aggiornato da, range date).
+- [x] Aggiungere ordinamento configurabile e paginazione lato UI.
+
 ## Report
 - [ ] Implementare filtri data/intervallo.
 - [ ] Implementare tab Lotto/Linea/Articolo.

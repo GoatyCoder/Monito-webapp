@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# next.js build artifacts
+.next/
+out/
+
+# local env
+.env*
+
+# logs
+npm-debug.log*
+
+# typescript
+*.tsbuildinfo
