@@ -56,3 +56,59 @@ Quando un agente contribuisce a questo repository, deve rispettare queste regole
 ## Stato repository
 
 Il repository contiene documentazione e skeleton iniziale. L’implementazione applicativa deve seguire i vincoli descritti nei documenti in `docs/` e mantenere `README.md` + `docs/TODO.md` sincronizzati con l’avanzamento del progetto.
+
+## Guida passo passo per il deploy
+
+Di seguito trovi una procedura standard per pubblicare l’app in produzione.
+
+### 1) Prerequisiti
+
+- Node.js 20+ installato localmente.
+- Accesso al repository Git.
+- Variabili ambiente di produzione pronte (es. Supabase URL e key).
+
+### 2) Installa le dipendenze
+
+```bash
+npm install
+```
+
+### 3) Configura le variabili ambiente
+
+1. Crea un file `.env.local` per i test locali, usando `.env.example` come template. Assicurati che `.env.example` sia sempre aggiornato e versionato.
+2. Inserisci in piattaforma di hosting le stesse variabili con i valori di produzione.
+3. Verifica che tutte le variabili elencate in `.env.example` siano valorizzate correttamente.
+
+> Non committare mai file `.env*` con segreti reali.
+
+### 4) Esegui i controlli prima del deploy
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+
+Se uno di questi comandi fallisce, correggi gli errori prima di continuare.
+
+> **Nota:** Se `npm run lint` avvia una configurazione interattiva, completala e committa i file generati (es. `.eslintrc.json`) per rendere il comando non interattivo nelle esecuzioni future.
+
+### 5) Deploy su Vercel (consigliato per Next.js)
+
+1. Crea un nuovo progetto su Vercel e collega il repository.
+2. Imposta framework **Next.js** (rilevato automaticamente nella maggior parte dei casi).
+3. Aggiungi tutte le variabili ambiente nel pannello **Settings → Environment Variables**.
+4. Avvia il deploy del branch principale (`main` o branch concordato).
+5. Verifica che lo stato build sia `Ready` e apri la URL generata.
+
+### 6) Verifica post-deploy
+
+- Apri dashboard, anagrafiche e report.
+- Verifica caricamento dati da Supabase.
+- Controlla console browser e log runtime per errori.
+- Esegui un test rapido di regressione sui flussi principali.
+
+### 7) Rollback (se necessario)
+
+- Su Vercel: vai nella lista deploy, seleziona un deploy precedente stabile e promuovilo.
+- In alternativa, ripristina un commit stabile e rilancia il deploy.
