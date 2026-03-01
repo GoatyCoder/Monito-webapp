@@ -6,7 +6,7 @@
 
 ## Convenzioni
 
-- Ogni tabella ha `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at timestamptz DEFAULT now()`, `created_by`, `updated_at`, `updated_by`
+- Ogni tabella ha `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at timestamptz DEFAULT now()`, `created_by uuid NOT NULL`, `updated_at`, `updated_by`
 - Le anagrafiche (`prodotti_grezzi`, `varieta`, `articoli`, `imballaggi_secondari`, `linee`, `sigle_lotto`) usano disattivazione logica con `attivo boolean DEFAULT true` (no delete fisico)
 - I dati produttivi (lavorazioni, pedane, scarti) sono immutabili: ogni modifica genera una riga in `audit_log`
 - RLS attiva su tutte le tabelle
@@ -19,7 +19,7 @@
 ```sql
 id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at  timestamptz DEFAULT now()
-created_by  uuid REFERENCES auth.users(id)
+created_by  uuid NOT NULL REFERENCES auth.users(id)
 updated_at  timestamptz
 updated_by  uuid REFERENCES auth.users(id)
 nome        text NOT NULL
@@ -31,7 +31,7 @@ attivo      boolean DEFAULT true
 ```sql
 id                  uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at          timestamptz DEFAULT now()
-created_by          uuid REFERENCES auth.users(id)
+created_by          uuid NOT NULL REFERENCES auth.users(id)
 updated_at          timestamptz
 updated_by          uuid REFERENCES auth.users(id)
 nome                text NOT NULL
@@ -44,7 +44,7 @@ attivo              boolean DEFAULT true
 ```sql
 id                          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at                  timestamptz DEFAULT now()
-created_by                  uuid REFERENCES auth.users(id)
+created_by                  uuid NOT NULL REFERENCES auth.users(id)
 updated_at                  timestamptz
 updated_by                  uuid REFERENCES auth.users(id)
 nome                        text NOT NULL
@@ -67,7 +67,7 @@ Il sistema filtra gli articoli disponibili all'apertura della lavorazione. Artic
 ```sql
 id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at  timestamptz DEFAULT now()
-created_by  uuid REFERENCES auth.users(id)
+created_by  uuid NOT NULL REFERENCES auth.users(id)
 updated_at  timestamptz
 updated_by  uuid REFERENCES auth.users(id)
 nome        text NOT NULL        -- es. "Cartone 40x60", "Bins", "Cassa di legno"
@@ -83,7 +83,7 @@ attivo      boolean DEFAULT true
 ```sql
 id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at  timestamptz DEFAULT now()
-created_by  uuid REFERENCES auth.users(id)
+created_by  uuid NOT NULL REFERENCES auth.users(id)
 updated_at  timestamptz
 updated_by  uuid REFERENCES auth.users(id)
 nome        text NOT NULL
@@ -96,7 +96,7 @@ ordine      integer              -- posizione nel cruscotto, configurabile da Ad
 ```sql
 id                  uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at          timestamptz DEFAULT now()
-created_by          uuid REFERENCES auth.users(id)
+created_by          uuid NOT NULL REFERENCES auth.users(id)
 updated_at          timestamptz
 updated_by          uuid REFERENCES auth.users(id)
 codice              text NOT NULL UNIQUE   -- es. "2012", inserito manualmente
@@ -110,7 +110,7 @@ campo               text                  -- identificativo campo/appezzamento
 ```sql
 id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at      timestamptz DEFAULT now()
-created_by      uuid REFERENCES auth.users(id)
+created_by      uuid NOT NULL REFERENCES auth.users(id)
 updated_at      timestamptz
 updated_by      uuid REFERENCES auth.users(id)
 codice          text NOT NULL UNIQUE   -- formato SIGLA-DOY, es. "2012-012". Generato automaticamente.
@@ -151,7 +151,7 @@ FOR EACH ROW EXECUTE FUNCTION generate_lotto_ingresso_codice();
 ```sql
 id                        uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at                timestamptz DEFAULT now()
-created_by                uuid REFERENCES auth.users(id)
+created_by                uuid NOT NULL REFERENCES auth.users(id)
 updated_at                timestamptz
 updated_by                uuid REFERENCES auth.users(id)
 linea_id                  uuid NOT NULL REFERENCES linee(id)
@@ -170,7 +170,7 @@ aperta_da                 uuid NOT NULL REFERENCES auth.users(id)
 ```sql
 id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at      timestamptz DEFAULT now()
-created_by      uuid REFERENCES auth.users(id)
+created_by      uuid NOT NULL REFERENCES auth.users(id)
 updated_at      timestamptz
 updated_by      uuid REFERENCES auth.users(id)
 codice_pedana   text NOT NULL UNIQUE   -- formato PYY-DOY-NNNN, es. "P26-051-0042". Generato da trigger.
@@ -218,7 +218,7 @@ FOR EACH ROW EXECUTE FUNCTION generate_codice_pedana();
 ```sql
 id                uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at        timestamptz DEFAULT now()
-created_by        uuid REFERENCES auth.users(id)
+created_by        uuid NOT NULL REFERENCES auth.users(id)
 updated_at        timestamptz
 updated_by        uuid REFERENCES auth.users(id)
 lotto_ingresso_id uuid NOT NULL REFERENCES lotti_ingresso(id)
@@ -251,7 +251,7 @@ I campi `colli` e `peso_kg` sono indipendenti — nessun calcolo automatico tra 
 ```sql
 id                uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at        timestamptz DEFAULT now()
-created_by        uuid REFERENCES auth.users(id)
+created_by        uuid NOT NULL REFERENCES auth.users(id)
 updated_at        timestamptz
 updated_by        uuid REFERENCES auth.users(id)
 utente_id         uuid NOT NULL REFERENCES auth.users(id)

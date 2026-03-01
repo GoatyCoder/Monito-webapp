@@ -7,7 +7,7 @@ export type UserRole = 'admin' | 'operatore' | 'viewer';
 
 export type EntityAuditFields = {
   createdAt: string;
-  createdBy: string | null;
+  createdBy: string;
   updatedAt: string | null;
   updatedBy: string | null;
 };
