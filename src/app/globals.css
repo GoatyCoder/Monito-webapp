@@ -8,5 +8,5 @@
   - Nessuna personalizzazione avanzata in questa fase.
 */
 body {
-  @apply bg-background text-slate-900;
+  @apply bg-background text-secondary;
 }
