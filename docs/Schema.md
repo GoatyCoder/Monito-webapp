@@ -7,6 +7,7 @@
 ## Convenzioni
 
 - Ogni tabella ha `id uuid PRIMARY KEY DEFAULT gen_random_uuid()` e `created_at timestamptz DEFAULT now()`
+- Le anagrafiche (`prodotti_grezzi`, `varieta`, `articoli`, `imballaggi_secondari`, `linee`, `sigle_lotto`) tracciano anche `created_by`, `updated_at`, `updated_by`
 - Nessun record viene cancellato fisicamente — le anagrafiche hanno `attivo boolean DEFAULT true`
 - I dati produttivi (lavorazioni, pedane, scarti) sono immutabili: ogni modifica genera una riga in `audit_log`
 - RLS attiva su tutte le tabelle
@@ -19,6 +20,9 @@
 ```sql
 id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at  timestamptz DEFAULT now()
+created_by  uuid REFERENCES auth.users(id)
+updated_at  timestamptz
+updated_by  uuid REFERENCES auth.users(id)
 nome        text NOT NULL
 descrizione text
 attivo      boolean DEFAULT true
@@ -28,7 +32,11 @@ attivo      boolean DEFAULT true
 ```sql
 id                  uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at          timestamptz DEFAULT now()
+created_by          uuid REFERENCES auth.users(id)
+updated_at          timestamptz
+updated_by          uuid REFERENCES auth.users(id)
 nome                text NOT NULL
+descrizione         text
 prodotto_grezzo_id  uuid NOT NULL REFERENCES prodotti_grezzi(id) ON DELETE CASCADE
 attivo              boolean DEFAULT true
 ```
@@ -37,7 +45,11 @@ attivo              boolean DEFAULT true
 ```sql
 id                          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at                  timestamptz DEFAULT now()
+created_by                  uuid REFERENCES auth.users(id)
+updated_at                  timestamptz
+updated_by                  uuid REFERENCES auth.users(id)
 nome                        text NOT NULL
+descrizione                 text
 peso_per_collo              numeric NOT NULL         -- kg
 peso_variabile              boolean DEFAULT false    -- se true: peso pedana sovrascrivibile
 vincolo_prodotto_grezzo_id  uuid REFERENCES prodotti_grezzi(id)  -- nullable
@@ -56,11 +68,15 @@ Il sistema filtra gli articoli disponibili all'apertura della lavorazione. Artic
 ```sql
 id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at  timestamptz DEFAULT now()
+created_by  uuid REFERENCES auth.users(id)
+updated_at  timestamptz
+updated_by  uuid REFERENCES auth.users(id)
 nome        text NOT NULL        -- es. "Cartone 40x60", "Bins", "Cassa di legno"
-tipo        text                 -- classificazione libera
 descrizione text
 tara_kg     numeric              -- tara imballaggio in kg (per usi futuri)
-dimensioni  text                 -- es. "60x40x30 cm" (per ottimizzazione pallettizzazione futura)
+lunghezza_cm numeric             -- lunghezza imballaggio
+larghezza_cm numeric             -- larghezza imballaggio
+altezza_cm   numeric             -- altezza imballaggio
 attivo      boolean DEFAULT true
 ```
 
@@ -68,6 +84,9 @@ attivo      boolean DEFAULT true
 ```sql
 id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at  timestamptz DEFAULT now()
+created_by  uuid REFERENCES auth.users(id)
+updated_at  timestamptz
+updated_by  uuid REFERENCES auth.users(id)
 nome        text NOT NULL
 descrizione text
 attiva      boolean DEFAULT true
@@ -78,6 +97,9 @@ ordine      integer              -- posizione nel cruscotto, configurabile da Ad
 ```sql
 id                  uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at          timestamptz DEFAULT now()
+created_by          uuid REFERENCES auth.users(id)
+updated_at          timestamptz
+updated_by          uuid REFERENCES auth.users(id)
 codice              text NOT NULL UNIQUE   -- es. "2012", inserito manualmente
 produttore          text NOT NULL
 prodotto_grezzo_id  uuid NOT NULL REFERENCES prodotti_grezzi(id)
