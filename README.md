@@ -25,9 +25,16 @@ Nella cartella `docs/` trovi i documenti principali:
 ### Tracciabilità tra documenti
 
 - PRD rimanda ai dettagli visuali su Design.
-- PRD e Design rimandano a Schema per vincoli, audit e regole DB.
+- PRD e Design rimandano a Schema per vincoli, audit e regole DB (incluse convenzioni `is_active/deleted_*` e `audit_log`).
 - TODO traduce i requisiti in attività implementative.
 - Ogni nuova feature deve aggiornare in modo coerente PRD/Design/Schema/TODO.
+
+
+## Data conventions (audit & soft delete)
+
+- Audit metadata standard sulle tabelle applicative: `created_at`, `created_by`, `updated_at`, `updated_by`.
+- `audit_log` è append-only e usa naming in inglese: `event_at`, `actor_id`, `actor_name`, `table_name`, `action`, `field_name`, `old_value`, `new_value`, `reason`.
+- Soft delete sulle anagrafiche con naming in inglese: `is_active`, `deleted_at`, `deleted_by` (no delete fisico).
 
 ## Istruzioni operative per agenti (AI/Codex)
 
