@@ -12,19 +12,21 @@ export type EntityAuditFields = {
   updatedBy: string | null;
 };
 
-export type Attivabile = {
-  attivo: boolean;
+export type SoftDeletable = {
+  isActive: boolean;
+  deletedAt: string | null;
+  deletedBy: string | null;
 };
 
 export type ProdottoGrezzo = EntityAuditFields &
-  Attivabile & {
+  SoftDeletable & {
     id: string;
     nome: string;
     descrizione: string | null;
   };
 
 export type Varieta = EntityAuditFields &
-  Attivabile & {
+  SoftDeletable & {
     id: string;
     nome: string;
     descrizione: string | null;
@@ -32,7 +34,7 @@ export type Varieta = EntityAuditFields &
   };
 
 export type Articolo = EntityAuditFields &
-  Attivabile & {
+  SoftDeletable & {
     id: string;
     nome: string;
     descrizione: string | null;
@@ -43,7 +45,7 @@ export type Articolo = EntityAuditFields &
   };
 
 export type ImballaggioSecondario = EntityAuditFields &
-  Attivabile & {
+  SoftDeletable & {
     id: string;
     nome: string;
     descrizione: string | null;
@@ -57,7 +59,7 @@ export type Linea = EntityAuditFields & {
   id: string;
   nome: string;
   descrizione: string | null;
-  attiva: boolean;
+  isActive: boolean;
   ordine: number | null;
 };
 
@@ -101,16 +103,16 @@ export type Scarto = EntityAuditFields & {
   pesoKg: number | null;
 };
 
-export type AuditLog = EntityAuditFields & {
+export type AuditLog = {
   id: string;
-  utenteId: string;
-  utenteNome: string;
-  timestamp: string;
-  tabella: string;
+  eventAt: string;
+  actorId: string;
+  actorName: string;
+  tableName: string;
   recordId: string;
-  azione: 'insert' | 'update' | 'delete_logic' | 'apertura' | 'chiusura' | 'riapertura';
-  campo: string | null;
-  valorePrecedente: unknown;
-  valoreNuovo: unknown;
-  motivo: string | null;
+  action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'open' | 'close' | 'reopen';
+  fieldName: string | null;
+  oldValue: unknown;
+  newValue: unknown;
+  reason: string | null;
 };

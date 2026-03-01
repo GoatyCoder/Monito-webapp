@@ -6,9 +6,9 @@
 
 ## Convenzioni
 
-- Ogni tabella ha `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at timestamptz DEFAULT now()`, `created_by uuid NOT NULL`, `updated_at`, `updated_by`
-- Le anagrafiche (`prodotti_grezzi`, `varieta`, `articoli`, `imballaggi_secondari`, `linee`, `sigle_lotto`) usano disattivazione logica con `attivo boolean DEFAULT true` (no delete fisico)
-- I dati produttivi (lavorazioni, pedane, scarti) sono immutabili: ogni modifica genera una riga in `audit_log`
+- Ogni tabella (tranne `audit_log`) ha `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at timestamptz DEFAULT now()`, `created_by uuid NOT NULL`, `updated_at`, `updated_by`
+- Soft delete best practice sulle anagrafiche (`prodotti_grezzi`, `varieta`, `articoli`, `imballaggi_secondari`, `linee`, `sigle_lotto`): `is_active boolean DEFAULT true`, `deleted_at`, `deleted_by`
+- I dati produttivi (lavorazioni, pedane, scarti) sono immutabili: ogni modifica produce un evento in `audit_log`
 - RLS attiva su tutte le tabelle
 
 ---
@@ -24,7 +24,9 @@ updated_at  timestamptz
 updated_by  uuid REFERENCES auth.users(id)
 nome        text NOT NULL
 descrizione text
-attivo      boolean DEFAULT true
+is_active   boolean NOT NULL DEFAULT true
+deleted_at  timestamptz
+deleted_by  uuid REFERENCES auth.users(id)
 ```
 
 ### `varieta`
@@ -37,7 +39,9 @@ updated_by          uuid REFERENCES auth.users(id)
 nome                text NOT NULL
 descrizione         text
 prodotto_grezzo_id  uuid NOT NULL REFERENCES prodotti_grezzi(id) ON DELETE CASCADE
-attivo              boolean DEFAULT true
+is_active            boolean NOT NULL DEFAULT true
+deleted_at           timestamptz
+deleted_by           uuid REFERENCES auth.users(id)
 ```
 
 ### `articoli`
@@ -53,7 +57,9 @@ peso_per_collo              numeric NOT NULL         -- kg
 peso_variabile              boolean DEFAULT false    -- se true: peso pedana sovrascrivibile
 vincolo_prodotto_grezzo_id  uuid REFERENCES prodotti_grezzi(id)  -- nullable
 vincolo_varieta_id          uuid REFERENCES varieta(id)          -- nullable
-attivo                      boolean DEFAULT true
+is_active                    boolean NOT NULL DEFAULT true
+deleted_at                   timestamptz
+deleted_by                   uuid REFERENCES auth.users(id)
 ```
 
 **Logica vincoli articolo:**
@@ -76,7 +82,9 @@ tara_kg     numeric              -- tara imballaggio in kg (per usi futuri)
 lunghezza_cm numeric             -- lunghezza imballaggio
 larghezza_cm numeric             -- larghezza imballaggio
 altezza_cm   numeric             -- altezza imballaggio
-attivo      boolean DEFAULT true
+is_active   boolean NOT NULL DEFAULT true
+deleted_at  timestamptz
+deleted_by  uuid REFERENCES auth.users(id)
 ```
 
 ### `linee`
@@ -88,7 +96,9 @@ updated_at  timestamptz
 updated_by  uuid REFERENCES auth.users(id)
 nome        text NOT NULL
 descrizione text
-attiva      boolean DEFAULT true
+is_active   boolean NOT NULL DEFAULT true
+deleted_at  timestamptz
+deleted_by  uuid REFERENCES auth.users(id)
 ordine      integer              -- posizione nel cruscotto, configurabile da Admin
 ```
 
@@ -249,28 +259,24 @@ I campi `colli` e `peso_kg` sono indipendenti — nessun calcolo automatico tra 
 
 ### `audit_log`
 ```sql
-id                uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at        timestamptz DEFAULT now()
-created_by        uuid NOT NULL REFERENCES auth.users(id)
-updated_at        timestamptz
-updated_by        uuid REFERENCES auth.users(id)
-utente_id         uuid NOT NULL REFERENCES auth.users(id)
-utente_nome       text NOT NULL        -- snapshot del nome al momento dell'azione (denormalizzato)
-timestamp         timestamptz NOT NULL DEFAULT now()
-tabella           text NOT NULL        -- es. 'lavorazioni', 'pedane', 'scarti', 'articoli'
-record_id         uuid NOT NULL        -- ID del record coinvolto
-azione            text NOT NULL        -- 'insert' | 'update' | 'delete_logic' | 'apertura' | 'chiusura' | 'riapertura'
-campo             text                 -- nome del campo modificato (solo per azione 'update')
-valore_precedente jsonb                -- stato prima della modifica
-valore_nuovo      jsonb                -- stato dopo la modifica
-motivo            text                 -- motivazione opzionale inserita dall'utente
+id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
+event_at        timestamptz NOT NULL DEFAULT now()
+actor_id        uuid NOT NULL REFERENCES auth.users(id)
+actor_name      text NOT NULL        -- snapshot del nome al momento dell'azione (denormalizzato)
+table_name      text NOT NULL        -- es. 'lavorazioni', 'pedane', 'scarti', 'articoli'
+record_id       uuid NOT NULL        -- ID del record coinvolto
+action          text NOT NULL        -- 'insert' | 'update' | 'soft_delete' | 'restore' | 'open' | 'close' | 'reopen'
+field_name      text                 -- nome del campo modificato (solo per azione 'update')
+old_value       jsonb                -- stato prima della modifica
+new_value       jsonb                -- stato dopo la modifica
+reason          text                 -- motivazione opzionale inserita dall'utente
 ```
 
-**Regole immutabilità — enforce via RLS:**
+**Regole immutabilità — enforce via RLS + trigger:**
 - Solo `INSERT` permesso su `audit_log`, mai `UPDATE` o `DELETE`
-- In `audit_log` i campi `updated_at` e `updated_by` restano sempre `NULL` (tabella immutabile)
+- `audit_log` non usa campi `updated_*` e non supporta soft delete
 - Copre tutte le tabelle: anagrafiche, lavorazioni, pedane, scarti
-- Ogni INSERT, UPDATE e disattivazione (`attivo = false`) genera una riga
+- Ogni INSERT, UPDATE, soft delete (`is_active = false`) e restore (`is_active = true`) genera una riga
 - Accessibile in lettura solo all'Admin
 
 ---
@@ -318,9 +324,9 @@ CREATE INDEX idx_pedane_data ON pedane(DATE(registrata_at));
 -- Scarti per lotto
 CREATE INDEX idx_scarti_lotto ON scarti(lotto_ingresso_id);
 
--- Audit log per record
-CREATE INDEX idx_audit_log_record ON audit_log(tabella, record_id);
-CREATE INDEX idx_audit_log_utente ON audit_log(utente_id);
+-- Audit log per record e attore
+CREATE INDEX idx_audit_log_record ON audit_log(table_name, record_id);
+CREATE INDEX idx_audit_log_actor ON audit_log(actor_id);
 ```
 
 ---
