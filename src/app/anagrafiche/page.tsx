@@ -1,6 +1,29 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
+
+type ColumnType = 'text' | 'number' | 'boolean' | 'date';
+
+type RegistryRecord = {
+  id: string;
+  [key: string]: string | number | boolean;
+};
+
+type RegistryColumn = {
+  key: string;
+  label: string;
+  type: ColumnType;
+  required?: boolean;
+};
+
+type RegistryConfig = {
+  key: RegistryKey;
+  label: string;
+  singularLabel: string;
+  description: string;
+  columns: RegistryColumn[];
+  initialData: RegistryRecord[];
+};
 
 type RegistryKey =
   | 'linee'
@@ -11,226 +34,334 @@ type RegistryKey =
   | 'sigleLotto'
   | 'lottiIngresso';
 
-type RegistryItem = {
-  id: string;
-  codice: string;
-  nome: string;
-  categoria: string;
-  stato: 'Attivo' | 'Disattivato';
-  aggiornatoDa: string;
-  aggiornatoIl: string;
-};
-
-type RegistryConfig = {
-  key: RegistryKey;
-  label: string;
-  description: string;
-  columns: Array<{ key: keyof RegistryItem; label: string }>;
-  data: RegistryItem[];
-};
-
 const registryConfigs: RegistryConfig[] = [
   {
     key: 'linee',
     label: 'Linee',
-    description: 'Linee produttive ordinate e gestibili con soft delete.',
+    singularLabel: 'linea',
+    description: 'Gestione linee produttive con ordinamento cruscotto.',
     columns: [
-      { key: 'codice', label: 'Codice linea' },
-      { key: 'nome', label: 'Descrizione' },
-      { key: 'categoria', label: 'Area' },
-      { key: 'stato', label: 'Stato' },
-      { key: 'aggiornatoDa', label: 'Aggiornato da' },
-      { key: 'aggiornatoIl', label: 'Ultimo aggiornamento' }
+      { key: 'nome', label: 'Nome', type: 'text', required: true },
+      { key: 'descrizione', label: 'Descrizione', type: 'text' },
+      { key: 'ordine', label: 'Ordine', type: 'number' }
     ],
-    data: [
-      { id: 'l1', codice: 'LINEA-01', nome: 'Confezionamento Nord', categoria: 'Confezionamento', stato: 'Attivo', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-21' },
-      { id: 'l2', codice: 'LINEA-02', nome: 'Confezionamento Sud', categoria: 'Confezionamento', stato: 'Attivo', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-20' },
-      { id: 'l3', codice: 'LINEA-03', nome: 'Linea test stagionale', categoria: 'Sperimentale', stato: 'Disattivato', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-14' },
-      { id: 'l4', codice: 'LINEA-04', nome: 'Calibrazione export', categoria: 'Calibratura', stato: 'Attivo', aggiornatoDa: 'Lucia', aggiornatoIl: '2026-02-26' }
+    initialData: [
+      { id: 'l1', nome: 'Linea 1', descrizione: 'Confezionamento Nord', ordine: 1 },
+      { id: 'l2', nome: 'Linea 2', descrizione: 'Confezionamento Sud', ordine: 2 },
+      { id: 'l3', nome: 'Linea 4', descrizione: 'Calibratura export', ordine: 4 }
     ]
   },
   {
     key: 'prodotti',
     label: 'Prodotti grezzi',
-    description: 'Categorie merceologiche disponibili a catalogo.',
+    singularLabel: 'prodotto grezzo',
+    description: 'Catalogo prodotti grezzi: nome e descrizione.',
     columns: [
-      { key: 'codice', label: 'Codice' },
-      { key: 'nome', label: 'Prodotto' },
-      { key: 'categoria', label: 'Filiera' },
-      { key: 'stato', label: 'Stato' },
-      { key: 'aggiornatoDa', label: 'Aggiornato da' },
-      { key: 'aggiornatoIl', label: 'Ultimo aggiornamento' }
+      { key: 'nome', label: 'Nome', type: 'text', required: true },
+      { key: 'descrizione', label: 'Descrizione', type: 'text' }
     ],
-    data: [
-      { id: 'p1', codice: 'PG-001', nome: 'Uva da Tavola', categoria: 'Frutta fresca', stato: 'Attivo', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-25' },
-      { id: 'p2', codice: 'PG-002', nome: 'Agrumi', categoria: 'Frutta fresca', stato: 'Attivo', aggiornatoDa: 'Franco', aggiornatoIl: '2026-02-18' },
-      { id: 'p3', codice: 'PG-003', nome: 'Melograno', categoria: 'Frutta premium', stato: 'Disattivato', aggiornatoDa: 'Admin', aggiornatoIl: '2026-01-29' }
+    initialData: [
+      { id: 'p1', nome: 'Uva da Tavola', descrizione: 'Prodotto per confezionamento retail' },
+      { id: 'p2', nome: 'Agrumi', descrizione: 'Arance e mandarini da lavorare' },
+      { id: 'p3', nome: 'Melograno', descrizione: 'Lavorazione stagionale' }
     ]
   },
   {
     key: 'varieta',
     label: 'Varietà',
-    description: 'Cultivar collegate ai prodotti grezzi.',
+    singularLabel: 'varietà',
+    description: 'Cultivar collegate al prodotto grezzo di riferimento.',
     columns: [
-      { key: 'codice', label: 'Codice varietà' },
-      { key: 'nome', label: 'Varietà' },
-      { key: 'categoria', label: 'Prodotto grezzo' },
-      { key: 'stato', label: 'Stato' },
-      { key: 'aggiornatoDa', label: 'Aggiornato da' },
-      { key: 'aggiornatoIl', label: 'Ultimo aggiornamento' }
+      { key: 'nome', label: 'Nome', type: 'text', required: true },
+      { key: 'descrizione', label: 'Descrizione', type: 'text' },
+      { key: 'prodottoGrezzo', label: 'Prodotto grezzo', type: 'text', required: true }
     ],
-    data: [
-      { id: 'v1', codice: 'VAR-001', nome: 'Crimson', categoria: 'Uva da Tavola', stato: 'Attivo', aggiornatoDa: 'Lucia', aggiornatoIl: '2026-02-24' },
-      { id: 'v2', codice: 'VAR-002', nome: 'Italia', categoria: 'Uva da Tavola', stato: 'Attivo', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-21' },
-      { id: 'v3', codice: 'VAR-003', nome: 'Navelina', categoria: 'Agrumi', stato: 'Attivo', aggiornatoDa: 'Franco', aggiornatoIl: '2026-02-10' }
+    initialData: [
+      { id: 'v1', nome: 'Crimson', descrizione: 'Uva rossa senza semi', prodottoGrezzo: 'Uva da Tavola' },
+      { id: 'v2', nome: 'Italia', descrizione: 'Uva bianca da tavola', prodottoGrezzo: 'Uva da Tavola' },
+      { id: 'v3', nome: 'Navelina', descrizione: 'Arancia da spremuta', prodottoGrezzo: 'Agrumi' }
     ]
   },
   {
     key: 'imballaggi',
     label: 'Imballaggi secondari',
-    description: 'Formati di confezionamento utilizzabili in lavorazione.',
+    singularLabel: 'imballaggio',
+    description: 'Imballaggi con tara e misure principali.',
     columns: [
-      { key: 'codice', label: 'Codice imballaggio' },
-      { key: 'nome', label: 'Nome' },
-      { key: 'categoria', label: 'Formato' },
-      { key: 'stato', label: 'Stato' },
-      { key: 'aggiornatoDa', label: 'Aggiornato da' },
-      { key: 'aggiornatoIl', label: 'Ultimo aggiornamento' }
+      { key: 'nome', label: 'Nome', type: 'text', required: true },
+      { key: 'descrizione', label: 'Descrizione', type: 'text' },
+      { key: 'taraKg', label: 'Tara (kg)', type: 'number' },
+      { key: 'dimensioniCm', label: 'Dimensioni (cm)', type: 'text' }
     ],
-    data: [
-      { id: 'i1', codice: 'IMB-500', nome: 'Cartone 40x60', categoria: 'Standard', stato: 'Attivo', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-22' },
-      { id: 'i2', codice: 'IMB-750', nome: 'Vassoio flow-pack', categoria: 'Retail', stato: 'Attivo', aggiornatoDa: 'Lucia', aggiornatoIl: '2026-02-11' },
-      { id: 'i3', codice: 'IMB-900', nome: 'Cassetta legno premium', categoria: 'Premium', stato: 'Disattivato', aggiornatoDa: 'Admin', aggiornatoIl: '2026-01-25' }
+    initialData: [
+      { id: 'i1', nome: 'Cartone 40x60', descrizione: 'Standard linea confezionamento', taraKg: 0.35, dimensioniCm: '40x60x30' },
+      { id: 'i2', nome: 'Vassoio flow-pack', descrizione: 'Formato retail', taraKg: 0.12, dimensioniCm: '30x40x8' },
+      { id: 'i3', nome: 'Cassetta legno', descrizione: 'Premium', taraKg: 0.8, dimensioniCm: '45x65x32' }
     ]
   },
   {
     key: 'articoli',
     label: 'Articoli',
-    description: 'Prodotti finiti con vincoli su prodotto grezzo e varietà.',
+    singularLabel: 'articolo',
+    description: 'Prodotti finiti con peso per collo e vincoli lotto.',
     columns: [
-      { key: 'codice', label: 'Codice articolo' },
-      { key: 'nome', label: 'Articolo' },
-      { key: 'categoria', label: 'Vincolo' },
-      { key: 'stato', label: 'Stato' },
-      { key: 'aggiornatoDa', label: 'Aggiornato da' },
-      { key: 'aggiornatoIl', label: 'Ultimo aggiornamento' }
+      { key: 'nome', label: 'Nome', type: 'text', required: true },
+      { key: 'descrizione', label: 'Descrizione', type: 'text' },
+      { key: 'pesoPerCollo', label: 'Peso per collo (kg)', type: 'number', required: true },
+      { key: 'pesoVariabile', label: 'Peso variabile', type: 'boolean' },
+      { key: 'vincoloProdotto', label: 'Vincolo prodotto grezzo', type: 'text' },
+      { key: 'vincoloVarieta', label: 'Vincolo varietà', type: 'text' }
     ],
-    data: [
-      { id: 'a1', codice: 'ART-001', nome: 'Uva Bianca 500g', categoria: 'Uva da Tavola / Italia', stato: 'Attivo', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-27' },
-      { id: 'a2', codice: 'ART-002', nome: 'Uva Rossa 1kg', categoria: 'Uva da Tavola / Crimson', stato: 'Attivo', aggiornatoDa: 'Lucia', aggiornatoIl: '2026-02-24' },
-      { id: 'a3', codice: 'ART-003', nome: 'Mix agrumi 2kg', categoria: 'Agrumi / Any', stato: 'Disattivato', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-01' }
+    initialData: [
+      {
+        id: 'a1',
+        nome: 'Uva Bianca 500g',
+        descrizione: 'Confezione retail',
+        pesoPerCollo: 0.5,
+        pesoVariabile: false,
+        vincoloProdotto: 'Uva da Tavola',
+        vincoloVarieta: 'Italia'
+      },
+      {
+        id: 'a2',
+        nome: 'Uva Rossa 1kg',
+        descrizione: 'Confezione premium',
+        pesoPerCollo: 1,
+        pesoVariabile: false,
+        vincoloProdotto: 'Uva da Tavola',
+        vincoloVarieta: 'Crimson'
+      },
+      {
+        id: 'a3',
+        nome: 'Mix agrumi 2kg',
+        descrizione: 'Misto stagionale',
+        pesoPerCollo: 2,
+        pesoVariabile: true,
+        vincoloProdotto: 'Agrumi',
+        vincoloVarieta: ''
+      }
     ]
   },
   {
     key: 'sigleLotto',
     label: 'Sigle lotto',
-    description: 'Partite configurabili per produttore e cultivar.',
+    singularLabel: 'sigla lotto',
+    description: 'Partite configurate per produttore, prodotto e varietà.',
     columns: [
-      { key: 'codice', label: 'Sigla' },
-      { key: 'nome', label: 'Produttore' },
-      { key: 'categoria', label: 'Composizione' },
-      { key: 'stato', label: 'Stato' },
-      { key: 'aggiornatoDa', label: 'Aggiornato da' },
-      { key: 'aggiornatoIl', label: 'Ultimo aggiornamento' }
+      { key: 'codice', label: 'Codice', type: 'text', required: true },
+      { key: 'produttore', label: 'Produttore', type: 'text', required: true },
+      { key: 'prodottoGrezzo', label: 'Prodotto grezzo', type: 'text', required: true },
+      { key: 'varieta', label: 'Varietà', type: 'text', required: true },
+      { key: 'campo', label: 'Campo', type: 'text' }
     ],
-    data: [
-      { id: 's1', codice: '2012', nome: 'Azienda Verde', categoria: 'Uva da Tavola / Italia / Campo A', stato: 'Attivo', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-19' },
-      { id: 's2', codice: '2099', nome: 'Fratelli Sole', categoria: 'Uva da Tavola / Crimson / Campo C', stato: 'Attivo', aggiornatoDa: 'Franco', aggiornatoIl: '2026-02-13' },
-      { id: 's3', codice: '1880', nome: 'Pianura Sud', categoria: 'Agrumi / Navelina / Lotto 2', stato: 'Disattivato', aggiornatoDa: 'Admin', aggiornatoIl: '2026-01-30' }
+    initialData: [
+      { id: 's1', codice: '2012', produttore: 'Azienda Verde', prodottoGrezzo: 'Uva da Tavola', varieta: 'Italia', campo: 'A' },
+      { id: 's2', codice: '2099', produttore: 'Fratelli Sole', prodottoGrezzo: 'Uva da Tavola', varieta: 'Crimson', campo: 'C' }
     ]
   },
   {
     key: 'lottiIngresso',
     label: 'Lotti ingresso',
-    description: 'Conferimenti fisici tracciabili con sigla + DOY.',
+    singularLabel: 'lotto ingresso',
+    description: 'Conferimenti fisici generati da sigla e DOY.',
     columns: [
-      { key: 'codice', label: 'Lotto ingresso' },
-      { key: 'nome', label: 'Produttore' },
-      { key: 'categoria', label: 'Composizione' },
-      { key: 'stato', label: 'Stato' },
-      { key: 'aggiornatoDa', label: 'Aggiornato da' },
-      { key: 'aggiornatoIl', label: 'Ultimo aggiornamento' }
+      { key: 'codice', label: 'Codice', type: 'text', required: true },
+      { key: 'siglaLotto', label: 'Sigla lotto', type: 'text', required: true },
+      { key: 'dataIngresso', label: 'Data ingresso', type: 'date', required: true },
+      { key: 'doy', label: 'DOY', type: 'number', required: true }
     ],
-    data: [
-      { id: 'li1', codice: '2012-041', nome: 'Azienda Verde', categoria: 'Uva Italia · DOY 041', stato: 'Attivo', aggiornatoDa: 'Admin', aggiornatoIl: '2026-02-10' },
-      { id: 'li2', codice: '2012-042', nome: 'Azienda Verde', categoria: 'Uva Italia · DOY 042', stato: 'Attivo', aggiornatoDa: 'Lucia', aggiornatoIl: '2026-02-11' },
-      { id: 'li3', codice: '2099-053', nome: 'Fratelli Sole', categoria: 'Uva Crimson · DOY 053', stato: 'Attivo', aggiornatoDa: 'Franco', aggiornatoIl: '2026-02-22' },
-      { id: 'li4', codice: '1880-021', nome: 'Pianura Sud', categoria: 'Agrumi Navelina · DOY 021', stato: 'Disattivato', aggiornatoDa: 'Admin', aggiornatoIl: '2026-01-28' }
+    initialData: [
+      { id: 'li1', codice: '2012-041', siglaLotto: '2012', dataIngresso: '2026-02-10', doy: 41 },
+      { id: 'li2', codice: '2012-042', siglaLotto: '2012', dataIngresso: '2026-02-11', doy: 42 },
+      { id: 'li3', codice: '2099-053', siglaLotto: '2099', dataIngresso: '2026-02-22', doy: 53 }
     ]
   }
 ];
 
 const pageSizeOptions = [5, 10, 20];
 
+type ModalMode = 'create' | 'edit';
+
 export default function AnagrafichePage() {
   const [activeTab, setActiveTab] = useState<RegistryKey>('linee');
+  const [recordsMap, setRecordsMap] = useState<Record<RegistryKey, RegistryRecord[]>>(() =>
+    registryConfigs.reduce(
+      (acc, config) => ({ ...acc, [config.key]: config.initialData }),
+      {} as Record<RegistryKey, RegistryRecord[]>
+    )
+  );
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'tutti' | RegistryItem['stato']>('tutti');
-  const [updatedByFilter, setUpdatedByFilter] = useState('tutti');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [sortBy, setSortBy] = useState<keyof RegistryItem>('aggiornatoIl');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [pageSize, setPageSize] = useState(5);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [sortBy, setSortBy] = useState<string>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<ModalMode>('create');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Record<string, string>>({});
 
-  const config = registryConfigs.find((registry) => registry.key === activeTab) ?? registryConfigs[0];
+  const config = registryConfigs.find((item) => item.key === activeTab) ?? registryConfigs[0];
+  const rows = useMemo(() => recordsMap[config.key] ?? [], [config.key, recordsMap]);
 
-  const updatedByOptions = useMemo(() => {
-    const set = new Set(config.data.map((item) => item.aggiornatoDa));
-    return ['tutti', ...Array.from(set)];
-  }, [config]);
-
-  const filteredRows = useMemo(() => {
+  const sortedAndFilteredRows = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return config.data
-      .filter((item) => {
-        if (!normalizedSearch) {
+    const filteredRows = rows.filter((row) => {
+      const values = config.columns.map((column) => String(row[column.key] ?? '').toLowerCase());
+      const isSearchMatch = normalizedSearch ? values.some((value) => value.includes(normalizedSearch)) : true;
+
+      const isColumnMatch = config.columns.every((column) => {
+        const filterValue = columnFilters[column.key]?.trim().toLowerCase();
+        if (!filterValue) {
           return true;
         }
 
-        return [item.codice, item.nome, item.categoria].some((value) => value.toLowerCase().includes(normalizedSearch));
-      })
-      .filter((item) => (statusFilter === 'tutti' ? true : item.stato === statusFilter))
-      .filter((item) => (updatedByFilter === 'tutti' ? true : item.aggiornatoDa === updatedByFilter))
-      .filter((item) => (fromDate ? item.aggiornatoIl >= fromDate : true))
-      .filter((item) => (toDate ? item.aggiornatoIl <= toDate : true))
-      .sort((a, b) => {
-        const left = String(a[sortBy]);
-        const right = String(b[sortBy]);
-        const result = left.localeCompare(right, 'it', { numeric: true });
-        return sortDirection === 'asc' ? result : -result;
+        const rowValue = String(row[column.key] ?? '').toLowerCase();
+        return rowValue.includes(filterValue);
       });
-  }, [config, fromDate, search, sortBy, sortDirection, statusFilter, toDate, updatedByFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+      return isSearchMatch && isColumnMatch;
+    });
+
+    if (!sortBy) {
+      return filteredRows;
+    }
+
+    return [...filteredRows].sort((leftRow, rightRow) => {
+      const leftValue = leftRow[sortBy];
+      const rightValue = rightRow[sortBy];
+
+      if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+        return sortDirection === 'asc' ? leftValue - rightValue : rightValue - leftValue;
+      }
+
+      if (typeof leftValue === 'boolean' && typeof rightValue === 'boolean') {
+        return sortDirection === 'asc' ? Number(leftValue) - Number(rightValue) : Number(rightValue) - Number(leftValue);
+      }
+
+      const comparison = String(leftValue ?? '').localeCompare(String(rightValue ?? ''), 'it', { numeric: true });
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [columnFilters, config.columns, rows, search, sortBy, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedAndFilteredRows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
 
   const pagedRows = useMemo(() => {
-    const safePage = Math.min(page, totalPages);
-    const start = (safePage - 1) * pageSize;
-    return filteredRows.slice(start, start + pageSize);
-  }, [filteredRows, page, pageSize, totalPages]);
+    const startIndex = (safePage - 1) * pageSize;
+    return sortedAndFilteredRows.slice(startIndex, startIndex + pageSize);
+  }, [pageSize, safePage, sortedAndFilteredRows]);
 
-  const resetFilters = () => {
+  const visiblePageNumbers = useMemo(() => {
+    const windowSize = 5;
+    const start = Math.max(1, safePage - Math.floor(windowSize / 2));
+    const end = Math.min(totalPages, start + windowSize - 1);
+    const adjustedStart = Math.max(1, end - windowSize + 1);
+
+    return Array.from({ length: end - adjustedStart + 1 }, (_, index) => adjustedStart + index);
+  }, [safePage, totalPages]);
+
+  const resetViewState = () => {
     setSearch('');
-    setStatusFilter('tutti');
-    setUpdatedByFilter('tutti');
-    setFromDate('');
-    setToDate('');
-    setSortBy('aggiornatoIl');
-    setSortDirection('desc');
+    setColumnFilters({});
+    setSortBy('');
+    setSortDirection('asc');
     setPage(1);
-    setPageSize(5);
+  };
+
+  const prepareEmptyForm = () => {
+    const entries = config.columns.map((column) => [column.key, column.type === 'boolean' ? 'false' : '']);
+    setFormData(Object.fromEntries(entries));
+  };
+
+  const openCreateModal = () => {
+    prepareEmptyForm();
+    setModalMode('create');
+    setEditingId(null);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (row: RegistryRecord) => {
+    const nextFormData = Object.fromEntries(config.columns.map((column) => [column.key, String(row[column.key] ?? '')]));
+    setFormData(nextFormData);
+    setModalMode('edit');
+    setEditingId(row.id);
+    setModalOpen(true);
+  };
+
+  const upsertRecord = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const missingRequired = config.columns.find((column) => column.required && !formData[column.key]?.trim());
+    if (missingRequired) {
+      return;
+    }
+
+    const recordPayload = Object.fromEntries(
+      config.columns.map((column) => {
+        const rawValue = formData[column.key] ?? '';
+
+        if (column.type === 'number') {
+          return [column.key, rawValue === '' ? 0 : Number(rawValue)];
+        }
+
+        if (column.type === 'boolean') {
+          return [column.key, rawValue === 'true'];
+        }
+
+        return [column.key, rawValue];
+      })
+    );
+
+    setRecordsMap((currentMap) => {
+      const currentRows = currentMap[config.key] ?? [];
+
+      if (modalMode === 'edit' && editingId) {
+        return {
+          ...currentMap,
+          [config.key]: currentRows.map((row) => (row.id === editingId ? { ...row, ...recordPayload } : row))
+        };
+      }
+
+      return {
+        ...currentMap,
+        [config.key]: [{ id: crypto.randomUUID(), ...recordPayload }, ...currentRows]
+      };
+    });
+
+    setModalOpen(false);
+  };
+
+  const deleteRecord = (recordId: string) => {
+    const confirmation = window.confirm(`Confermi eliminazione di questa ${config.singularLabel}?`);
+    if (!confirmation) {
+      return;
+    }
+
+    setRecordsMap((currentMap) => ({
+      ...currentMap,
+      [config.key]: (currentMap[config.key] ?? []).filter((row) => row.id !== recordId)
+    }));
+  };
+
+  const handleHeaderSort = (columnKey: string) => {
+    setPage(1);
+    if (sortBy !== columnKey) {
+      setSortBy(columnKey);
+      setSortDirection('asc');
+      return;
+    }
+
+    setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
   };
 
   return (
     <section className="space-y-6">
       <header className="rounded-lg border border-slate-200 bg-surface p-6 shadow-sm">
         <h1 className="text-2xl font-semibold text-slate-900">Anagrafiche</h1>
-        <p className="mt-2 max-w-3xl text-sm text-secondary">
-          Gestione centralizzata delle anagrafiche Monito con tab dedicate, filtri avanzati, ordinamento multi-colonna e paginazione.
-        </p>
+        <p className="mt-2 text-sm text-secondary">Interfaccia amministrativa con CRUD, filtri collassabili, ordinamento su intestazioni e paginazione migliorata.</p>
       </header>
 
       <div className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
@@ -243,10 +374,7 @@ export default function AnagrafichePage() {
                 type="button"
                 onClick={() => {
                   setActiveTab(tab.key);
-                  setPage(1);
-                  setSearch('');
-                  setStatusFilter('tutti');
-                  setUpdatedByFilter('tutti');
+                  resetViewState();
                 }}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                   isActive ? 'bg-primary text-white shadow' : 'bg-slate-100 text-secondary hover:bg-slate-200'
@@ -260,157 +388,96 @@ export default function AnagrafichePage() {
       </div>
 
       <article className="space-y-4 rounded-lg border border-slate-200 bg-surface p-5 shadow-sm">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">{config.label}</h2>
             <p className="text-sm text-secondary">{config.description}</p>
           </div>
-          <button
-            type="button"
-            className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-blue-50"
-          >
-            + Nuova anagrafica
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 rounded-lg bg-background p-4 md:grid-cols-2 xl:grid-cols-4">
-          <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
-            Ricerca
-            <input
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(1);
-              }}
-              placeholder="Codice, nome, categoria..."
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
-            Stato
-            <select
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value as 'tutti' | RegistryItem['stato']);
-                setPage(1);
-              }}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen((current) => !current)}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-secondary transition hover:bg-slate-100"
             >
-              <option value="tutti">Tutti</option>
-              <option value="Attivo">Attivo</option>
-              <option value="Disattivato">Disattivato</option>
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
-            Aggiornato da
-            <select
-              value={updatedByFilter}
-              onChange={(event) => {
-                setUpdatedByFilter(event.target.value);
-                setPage(1);
-              }}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
+              {isFilterOpen ? 'Chiudi filtri' : 'Apri filtri'}
+            </button>
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="rounded-md border border-primary bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
             >
-              {updatedByOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option === 'tutti' ? 'Tutti' : option}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
-              Da data
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(event) => {
-                  setFromDate(event.target.value);
-                  setPage(1);
-                }}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
-              A data
-              <input
-                type="date"
-                value={toDate}
-                onChange={(event) => {
-                  setToDate(event.target.value);
-                  setPage(1);
-                }}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
-              />
-            </label>
+              + Aggiungi {config.singularLabel}
+            </button>
           </div>
-
-          <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
-            Ordina per
-            <select
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as keyof RegistryItem)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
-            >
-              {config.columns.map((column) => (
-                <option key={column.key} value={column.key}>
-                  {column.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
-            Direzione
-            <select
-              value={sortDirection}
-              onChange={(event) => setSortDirection(event.target.value as 'asc' | 'desc')}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
-            >
-              <option value="asc">Crescente</option>
-              <option value="desc">Decrescente</option>
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
-            Righe per pagina
-            <select
-              value={pageSize}
-              onChange={(event) => {
-                setPageSize(Number(event.target.value));
-                setPage(1);
-              }}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
-            >
-              {pageSizeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="self-end rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-secondary transition hover:bg-slate-100"
-          >
-            Reset filtri
-          </button>
         </div>
+
+        {isFilterOpen ? (
+          <div className="space-y-3 rounded-lg bg-background p-4">
+            <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
+              Ricerca globale
+              <input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+                placeholder={`Cerca in ${config.label.toLowerCase()}...`}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
+              />
+            </label>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {config.columns.map((column) => (
+                <label key={column.key} className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-secondary">
+                  Filtro {column.label}
+                  <input
+                    value={columnFilters[column.key] ?? ''}
+                    onChange={(event) => {
+                      setColumnFilters((current) => ({ ...current, [column.key]: event.target.value }));
+                      setPage(1);
+                    }}
+                    placeholder={`Contiene ${column.label.toLowerCase()}`}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800 outline-none ring-primary transition focus:ring-2"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={resetViewState}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-secondary transition hover:bg-slate-100"
+              >
+                Reset filtri e ordinamento
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {config.columns.map((column) => (
-                  <th key={column.key} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary">
-                    {column.label}
-                  </th>
-                ))}
+                {config.columns.map((column) => {
+                  const isSorted = sortBy === column.key;
+                  const arrow = !isSorted ? '↕' : sortDirection === 'asc' ? '↑' : '↓';
+
+                  return (
+                    <th key={column.key} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary">
+                      <button
+                        type="button"
+                        onClick={() => handleHeaderSort(column.key)}
+                        className="inline-flex items-center gap-1 hover:text-primary"
+                        title={`Ordina per ${column.label}`}
+                      >
+                        <span>{column.label}</span>
+                        <span>{arrow}</span>
+                      </button>
+                    </th>
+                  );
+                })}
+                <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-secondary">Azioni</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -419,25 +486,33 @@ export default function AnagrafichePage() {
                   <tr key={row.id} className="transition hover:bg-slate-50">
                     {config.columns.map((column) => (
                       <td key={column.key} className="whitespace-nowrap px-3 py-3 text-slate-700">
-                        {column.key === 'stato' ? (
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-                              row.stato === 'Attivo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {row.stato}
-                          </span>
-                        ) : (
-                          row[column.key]
-                        )}
+                        {column.type === 'boolean' ? ((row[column.key] as boolean) ? 'Sì' : 'No') : String(row[column.key] ?? '-')}
                       </td>
                     ))}
+                    <td className="whitespace-nowrap px-3 py-3 text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(row)}
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-secondary transition hover:bg-slate-100"
+                        >
+                          Modifica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteRecord(row.id)}
+                          className="rounded-md border border-error px-3 py-1.5 text-xs font-medium text-error transition hover:bg-red-50"
+                        >
+                          Elimina
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={config.columns.length} className="px-3 py-8 text-center text-secondary">
-                    Nessun risultato con i filtri selezionati.
+                  <td colSpan={config.columns.length + 1} className="px-3 py-8 text-center text-secondary">
+                    Nessun risultato trovato.
                   </td>
                 </tr>
               )}
@@ -446,30 +521,131 @@ export default function AnagrafichePage() {
         </div>
 
         <footer className="flex flex-col gap-3 border-t border-slate-200 pt-3 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-secondary">
-            {filteredRows.length} record trovati · Pagina {Math.min(page, totalPages)} di {totalPages}
-          </p>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-secondary">
+            <span>
+              Mostrando {(safePage - 1) * pageSize + (pagedRows.length ? 1 : 0)}-{(safePage - 1) * pageSize + pagedRows.length} di {sortedAndFilteredRows.length}
+            </span>
+            <label className="inline-flex items-center gap-2">
+              <span>Righe</span>
+              <select
+                value={pageSize}
+                onChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  setPage(1);
+                }}
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800"
+              >
+                {pageSizeOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1">
             <button
               type="button"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-secondary transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => setPage(1)}
+              disabled={safePage === 1}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs text-secondary disabled:opacity-50"
             >
-              Precedente
+              «
             </button>
             <button
               type="button"
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-secondary transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={safePage === 1}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs text-secondary disabled:opacity-50"
             >
-              Successiva
+              ‹
+            </button>
+
+            {visiblePageNumbers.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                onClick={() => setPage(pageNumber)}
+                className={`rounded-md border px-2.5 py-1 text-xs ${
+                  pageNumber === safePage ? 'border-primary bg-primary text-white' : 'border-slate-300 text-secondary'
+                }`}
+              >
+                {pageNumber}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={safePage === totalPages}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs text-secondary disabled:opacity-50"
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(totalPages)}
+              disabled={safePage === totalPages}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs text-secondary disabled:opacity-50"
+            >
+              »
             </button>
           </div>
         </footer>
       </article>
+
+      {modalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">
+              {modalMode === 'create' ? `Aggiungi ${config.singularLabel}` : `Modifica ${config.singularLabel}`}
+            </h3>
+
+            <form className="mt-4 space-y-4" onSubmit={upsertRecord}>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {config.columns.map((column) => (
+                  <label key={column.key} className="flex flex-col gap-1 text-sm text-secondary">
+                    {column.label}
+                    {column.type === 'boolean' ? (
+                      <select
+                        value={formData[column.key] ?? 'false'}
+                        onChange={(event) => setFormData((current) => ({ ...current, [column.key]: event.target.value }))}
+                        className="rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                      >
+                        <option value="false">No</option>
+                        <option value="true">Sì</option>
+                      </select>
+                    ) : (
+                      <input
+                        type={column.type === 'number' ? 'number' : column.type === 'date' ? 'date' : 'text'}
+                        step={column.type === 'number' ? '0.01' : undefined}
+                        required={Boolean(column.required)}
+                        value={formData[column.key] ?? ''}
+                        onChange={(event) => setFormData((current) => ({ ...current, [column.key]: event.target.value }))}
+                        className="rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm text-secondary"
+                >
+                  Annulla
+                </button>
+                <button type="submit" className="rounded-md border border-primary bg-primary px-4 py-2 text-sm text-white">
+                  Salva
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
