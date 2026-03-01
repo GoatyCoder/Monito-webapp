@@ -91,6 +91,8 @@ npm run build
 
 Se uno di questi comandi fallisce, correggi gli errori prima di continuare.
 
+> **Nota:** Se `npm run lint` avvia una configurazione interattiva, completala e committa i file generati (es. `.eslintrc.json`) per rendere il comando non interattivo nelle esecuzioni future.
+
 ### 5) Deploy su Vercel (consigliato per Next.js)
 
 1. Crea un nuovo progetto su Vercel e collega il repository.
