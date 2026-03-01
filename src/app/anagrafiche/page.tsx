@@ -50,7 +50,7 @@ const seedArticoli: ArticoloRecord[] = [
   { id: 'art-002', nome: 'Cassetta 7kg', pesoPerCollo: 7, pesoVariabile: true, attivo: true }
 ];
 
-const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
+const createId = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 
 export default function AnagrafichePage() {
   const [namedRegistries, setNamedRegistries] = useState(seedNamedRegistries);
