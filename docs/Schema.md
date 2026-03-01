@@ -326,7 +326,7 @@ $$ LANGUAGE sql STABLE;
 CREATE POLICY "anagrafiche_select" ON prodotti_grezzi
   FOR SELECT TO authenticated USING (true);
 CREATE POLICY "anagrafiche_write" ON prodotti_grezzi
-  FOR ALL TO authenticated USING (auth_role() = 'admin');
+  FOR ALL TO authenticated USING (auth_role() = 'admin') WITH CHECK (auth_role() = 'admin');
 -- (stessa logica per varieta, articoli, imballaggi_secondari, linee, sigle_lotto)
 
 -- Lotti ingresso: tutti leggono, solo Admin inserisce
