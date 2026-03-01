@@ -6,9 +6,8 @@
 
 ## Convenzioni
 
-- Ogni tabella ha `id uuid PRIMARY KEY DEFAULT gen_random_uuid()` e `created_at timestamptz DEFAULT now()`
-- Le anagrafiche (`prodotti_grezzi`, `varieta`, `articoli`, `imballaggi_secondari`, `linee`, `sigle_lotto`) tracciano anche `created_by`, `updated_at`, `updated_by`
-- Nessun record viene cancellato fisicamente — le anagrafiche hanno `attivo boolean DEFAULT true`
+- Ogni tabella ha `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at timestamptz DEFAULT now()`, `created_by`, `updated_at`, `updated_by`
+- Le anagrafiche (`prodotti_grezzi`, `varieta`, `articoli`, `imballaggi_secondari`, `linee`, `sigle_lotto`) usano disattivazione logica con `attivo boolean DEFAULT true` (no delete fisico)
 - I dati produttivi (lavorazioni, pedane, scarti) sono immutabili: ogni modifica genera una riga in `audit_log`
 - RLS attiva su tutte le tabelle
 
@@ -111,6 +110,9 @@ campo               text                  -- identificativo campo/appezzamento
 ```sql
 id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at      timestamptz DEFAULT now()
+created_by      uuid REFERENCES auth.users(id)
+updated_at      timestamptz
+updated_by      uuid REFERENCES auth.users(id)
 codice          text NOT NULL UNIQUE   -- formato SIGLA-DOY, es. "2012-012". Generato automaticamente.
 sigla_lotto_id  uuid NOT NULL REFERENCES sigle_lotto(id)
 data_ingresso   date NOT NULL
@@ -149,6 +151,9 @@ FOR EACH ROW EXECUTE FUNCTION generate_lotto_ingresso_codice();
 ```sql
 id                        uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at                timestamptz DEFAULT now()
+created_by                uuid REFERENCES auth.users(id)
+updated_at                timestamptz
+updated_by                uuid REFERENCES auth.users(id)
 linea_id                  uuid NOT NULL REFERENCES linee(id)
 lotto_ingresso_id         uuid NOT NULL REFERENCES lotti_ingresso(id)
 articolo_id               uuid NOT NULL REFERENCES articoli(id)
@@ -165,6 +170,9 @@ aperta_da                 uuid NOT NULL REFERENCES auth.users(id)
 ```sql
 id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at      timestamptz DEFAULT now()
+created_by      uuid REFERENCES auth.users(id)
+updated_at      timestamptz
+updated_by      uuid REFERENCES auth.users(id)
 codice_pedana   text NOT NULL UNIQUE   -- formato PYY-DOY-NNNN, es. "P26-051-0042". Generato da trigger.
 lavorazione_id  uuid NOT NULL REFERENCES lavorazioni(id)
 numero_colli    integer NOT NULL
@@ -210,6 +218,9 @@ FOR EACH ROW EXECUTE FUNCTION generate_codice_pedana();
 ```sql
 id                uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at        timestamptz DEFAULT now()
+created_by        uuid REFERENCES auth.users(id)
+updated_at        timestamptz
+updated_by        uuid REFERENCES auth.users(id)
 lotto_ingresso_id uuid NOT NULL REFERENCES lotti_ingresso(id)
 colli             integer      -- numero contenitori scartati. Almeno uno tra colli e peso_kg obbligatorio.
 peso_kg           numeric      -- peso totale scarto in kg. Almeno uno tra colli e peso_kg obbligatorio.
@@ -240,6 +251,9 @@ I campi `colli` e `peso_kg` sono indipendenti — nessun calcolo automatico tra 
 ```sql
 id                uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at        timestamptz DEFAULT now()
+created_by        uuid REFERENCES auth.users(id)
+updated_at        timestamptz
+updated_by        uuid REFERENCES auth.users(id)
 utente_id         uuid NOT NULL REFERENCES auth.users(id)
 utente_nome       text NOT NULL        -- snapshot del nome al momento dell'azione (denormalizzato)
 timestamp         timestamptz NOT NULL DEFAULT now()
@@ -254,6 +268,7 @@ motivo            text                 -- motivazione opzionale inserita dall'ut
 
 **Regole immutabilità — enforce via RLS:**
 - Solo `INSERT` permesso su `audit_log`, mai `UPDATE` o `DELETE`
+- In `audit_log` i campi `updated_at` e `updated_by` restano sempre `NULL` (tabella immutabile)
 - Copre tutte le tabelle: anagrafiche, lavorazioni, pedane, scarti
 - Ogni INSERT, UPDATE e disattivazione (`attivo = false`) genera una riga
 - Accessibile in lettura solo all'Admin
