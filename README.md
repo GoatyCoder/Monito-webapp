@@ -75,9 +75,9 @@ npm install
 
 ### 3) Configura le variabili ambiente
 
-1. Crea (o aggiorna) un file `.env.local` per i test locali.
-2. Inserisci in piattaforma di hosting le stesse variabili con valori di produzione.
-3. Verifica che tutte le variabili usate in `src/lib/config` e nei client DB siano valorizzate.
+1. Crea un file `.env.local` per i test locali, usando `.env.example` come template. Assicurati che `.env.example` sia sempre aggiornato e versionato.
+2. Inserisci in piattaforma di hosting le stesse variabili con i valori di produzione.
+3. Verifica che tutte le variabili elencate in `.env.example` siano valorizzate correttamente.
 
 > Non committare mai file `.env*` con segreti reali.
 
