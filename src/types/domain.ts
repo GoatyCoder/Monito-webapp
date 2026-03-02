@@ -72,18 +72,11 @@ export type SiglaLotto = EntityAuditFields & {
   campo: string | null;
 };
 
-export type LottoIngresso = EntityAuditFields & {
-  id: string;
-  codice: string;
-  siglaLottoId: string;
-  dataIngresso: string;
-  doy: number;
-};
-
 export type Lavorazione = EntityAuditFields & {
   id: string;
   lineaId: string;
-  lottoIngressoId: string;
+  siglaLotto: string;
+  dataIngresso: string;
   articoloId: string;
   imballaggioSecondarioId: string;
   stato: 'aperta' | 'chiusa';
@@ -102,7 +95,8 @@ export type Pedana = EntityAuditFields & {
 
 export type Scarto = EntityAuditFields & {
   id: string;
-  lottoIngressoId: string;
+  siglaLotto: string;
+  dataIngresso: string;
   colli: number | null;
   pesoKg: number | null;
 };

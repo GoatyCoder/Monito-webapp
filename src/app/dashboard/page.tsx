@@ -1,12 +1,16 @@
 import { FabScarto } from '@/components/common/fab-scarto';
 import { LineCard } from '@/components/dashboard/line-card';
 import { SummaryBar } from '@/components/dashboard/summary-bar';
+import { NewWorkOrderForm } from '@/components/dashboard/new-work-order-form';
 
 export default function DashboardPage() {
   return (
     <section className="space-y-6">
       {/* Barra riepilogo sticky (placeholder dati). */}
       <SummaryBar />
+
+      {/* Apertura lavorazione semplificata con convertitore data/DOY. */}
+      <NewWorkOrderForm />
 
       {/* Griglia linee: placeholder statico per struttura UI. */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

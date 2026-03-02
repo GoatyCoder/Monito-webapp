@@ -116,46 +116,10 @@ varieta_id          uuid NOT NULL REFERENCES varieta(id)
 campo               text                  -- identificativo campo/appezzamento
 ```
 
-### `lotti_ingresso`
-```sql
-id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at      timestamptz DEFAULT now()
-created_by      uuid NOT NULL REFERENCES auth.users(id)
-updated_at      timestamptz
-updated_by      uuid REFERENCES auth.users(id)
-codice          text NOT NULL UNIQUE   -- formato SIGLA-DOY, es. "2012-012". Generato automaticamente.
-sigla_lotto_id  uuid NOT NULL REFERENCES sigle_lotto(id)
-data_ingresso   date NOT NULL
-doy             integer NOT NULL       -- Day of Year, calcolato automaticamente da trigger
-```
+### `lotti_ingresso` (deprecata in UI v1)
 
-**Funzione DOY:**
-```sql
-CREATE OR REPLACE FUNCTION get_doy(d date) RETURNS integer AS $$
-  SELECT EXTRACT(DOY FROM d)::integer;
-$$ LANGUAGE sql IMMUTABLE;
-```
-
-**Trigger generazione `codice` e `doy`:**
-```sql
-CREATE OR REPLACE FUNCTION generate_lotto_ingresso_codice()
-RETURNS TRIGGER AS $$
-DECLARE
-  sigla text;
-  doy_val integer;
-BEGIN
-  SELECT codice INTO sigla FROM sigle_lotto WHERE id = NEW.sigla_lotto_id;
-  doy_val := get_doy(NEW.data_ingresso);
-  NEW.doy := doy_val;
-  NEW.codice := sigla || '-' || LPAD(doy_val::text, 3, '0');
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_lotto_ingresso_codice
-BEFORE INSERT ON lotti_ingresso
-FOR EACH ROW EXECUTE FUNCTION generate_lotto_ingresso_codice();
-```
+> Nota: la UI v1 non espone più una anagrafica dedicata `lotti_ingresso`.
+> Il lotto operativo viene identificato da `sigla_lotto` + `data_ingresso` dentro `lavorazioni`; il DOY è sempre derivabile dalla data.
 
 ### `lavorazioni`
 ```sql
@@ -165,7 +129,8 @@ created_by                uuid NOT NULL REFERENCES auth.users(id)
 updated_at                timestamptz
 updated_by                uuid REFERENCES auth.users(id)
 linea_id                  uuid NOT NULL REFERENCES linee(id)
-lotto_ingresso_id         uuid NOT NULL REFERENCES lotti_ingresso(id)
+sigla_lotto               text NOT NULL REFERENCES sigle_lotto(codice) -- sigla valida da anagrafica
+data_ingresso             date NOT NULL            -- inserita in apertura lavorazione
 articolo_id               uuid NOT NULL REFERENCES articoli(id)
 imballaggio_secondario_id uuid NOT NULL REFERENCES imballaggi_secondari(id)
 stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta'
@@ -238,28 +203,40 @@ created_at        timestamptz DEFAULT now()
 created_by        uuid NOT NULL REFERENCES auth.users(id)
 updated_at        timestamptz
 updated_by        uuid REFERENCES auth.users(id)
-lotto_ingresso_id uuid NOT NULL REFERENCES lotti_ingresso(id)
+sigla_lotto       text NOT NULL REFERENCES sigle_lotto(codice)
+data_ingresso     date NOT NULL
 colli             integer      -- numero contenitori scartati. Almeno uno tra colli e peso_kg obbligatorio.
 peso_kg           numeric      -- peso totale scarto in kg. Almeno uno tra colli e peso_kg obbligatorio.
 registrato_at     timestamptz NOT NULL DEFAULT now()
 registrato_da     uuid NOT NULL REFERENCES auth.users(id)
 ```
 
-**Formula % scarto per lotto ingresso:**
+**Formula % scarto per lotto (sigla + data ingresso):**
 ```sql
+WITH prodotto AS (
+  SELECT
+    COALESCE(SUM(p.peso_totale), 0) AS prodotto_kg
+  FROM lavorazioni lav
+  LEFT JOIN pedane p ON p.lavorazione_id = lav.id
+  WHERE lav.sigla_lotto = '<sigla_lotto>'
+    AND lav.data_ingresso = '<data_ingresso>'
+),
+scarto AS (
+  SELECT
+    COALESCE(SUM(s.peso_kg), 0) AS scarto_kg
+  FROM scarti s
+  WHERE s.sigla_lotto = '<sigla_lotto>'
+    AND s.data_ingresso = '<data_ingresso>'
+)
 SELECT
-  SUM(s.peso_kg) AS scarto_kg,
-  SUM(p.peso_totale) AS prodotto_kg,
+  scarto.scarto_kg,
+  prodotto.prodotto_kg,
   ROUND(
-    SUM(s.peso_kg) / NULLIF(SUM(p.peso_totale) + SUM(s.peso_kg), 0) * 100,
+    scarto.scarto_kg / NULLIF(prodotto.prodotto_kg + scarto.scarto_kg, 0) * 100,
     2
   ) AS percentuale_scarto
-FROM lotti_ingresso li
-LEFT JOIN lavorazioni lav ON lav.lotto_ingresso_id = li.id
-LEFT JOIN pedane p ON p.lavorazione_id = lav.id
-LEFT JOIN scarti s ON s.lotto_ingresso_id = li.id
-WHERE li.id = '<lotto_id>'
-GROUP BY li.id;
+FROM prodotto
+CROSS JOIN scarto;
 ```
 
 I campi `colli` e `peso_kg` sono indipendenti — nessun calcolo automatico tra i due.
@@ -294,10 +271,9 @@ reason          text                 -- motivazione opzionale inserita dall'uten
 prodotti_grezzi
   └── varieta (N:1)
         └── sigle_lotto (N:1 prodotto_grezzo + varieta)
-              └── lotti_ingresso (N:1)
-                    └── lavorazioni (N:1)
-                          └── pedane (N:1)
-                    └── scarti (N:1)
+              ├── lavorazioni (N:1, via sigla_lotto + data_ingresso)
+              │     └── pedane (N:1)
+              └── scarti (N:1, via sigla_lotto + data_ingresso)
 
 articoli
   ├── vincolo_prodotto_grezzo_id → prodotti_grezzi (nullable)
@@ -305,7 +281,7 @@ articoli
 
 lavorazioni
   ├── linea_id → linee
-  ├── lotto_ingresso_id → lotti_ingresso
+  ├── sigla_lotto + data_ingresso (identificatore lotto operativo)
   ├── articolo_id → articoli
   └── imballaggio_secondario_id → imballaggi_secondari
 ```
@@ -319,17 +295,14 @@ lavorazioni
 CREATE INDEX idx_lavorazioni_linea ON lavorazioni(linea_id);
 CREATE INDEX idx_lavorazioni_stato ON lavorazioni(stato);
 CREATE INDEX idx_lavorazioni_aperta_at ON lavorazioni(aperta_at);
-
--- Ricerca lotti
-CREATE INDEX idx_lotti_ingresso_codice ON lotti_ingresso(codice);
-CREATE INDEX idx_lotti_ingresso_data ON lotti_ingresso(data_ingresso);
+CREATE INDEX idx_lavorazioni_lotto ON lavorazioni(sigla_lotto, data_ingresso);
 
 -- Pedane per lavorazione e per giorno
 CREATE INDEX idx_pedane_lavorazione ON pedane(lavorazione_id);
 CREATE INDEX idx_pedane_data ON pedane(DATE(registrata_at));
 
 -- Scarti per lotto
-CREATE INDEX idx_scarti_lotto ON scarti(lotto_ingresso_id);
+CREATE INDEX idx_scarti_lotto ON scarti(sigla_lotto, data_ingresso);
 
 -- Audit log per record e attore
 CREATE INDEX idx_audit_log_record ON audit_log(table_name, record_id);
@@ -348,7 +321,6 @@ ALTER TABLE articoli ENABLE ROW LEVEL SECURITY;
 ALTER TABLE imballaggi_secondari ENABLE ROW LEVEL SECURITY;
 ALTER TABLE linee ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sigle_lotto ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lotti_ingresso ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lavorazioni ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pedane ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scarti ENABLE ROW LEVEL SECURITY;
@@ -369,11 +341,6 @@ CREATE POLICY "anagrafiche_write" ON prodotti_grezzi
   FOR ALL TO authenticated USING (auth_role() = 'admin');
 -- (stessa logica per varieta, articoli, imballaggi_secondari, linee, sigle_lotto)
 
--- Lotti ingresso: tutti leggono, solo Admin inserisce
-CREATE POLICY "lotti_ingresso_select" ON lotti_ingresso
-  FOR SELECT TO authenticated USING (true);
-CREATE POLICY "lotti_ingresso_insert" ON lotti_ingresso
-  FOR INSERT TO authenticated WITH CHECK (auth_role() = 'admin');
 
 -- Lavorazioni, pedane, scarti: Admin e Operatore CRUD, Viewer solo lettura
 CREATE POLICY "produttivo_select" ON lavorazioni
