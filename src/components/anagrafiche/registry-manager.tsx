@@ -2,452 +2,601 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 
-type RegistryKey =
-  | 'linee'
-  | 'prodotti-grezzi'
-  | 'varieta'
-  | 'imballaggi-secondari'
-  | 'articoli'
-  | 'sigle-lotto';
+type EntityKey = 'linee' | 'prodottiGrezzi' | 'varieta' | 'imballaggiSecondari' | 'articoli' | 'sigleLotto';
 
-type RegistryRecord = {
+type BaseEntity = {
   id: string;
-  name: string;
-  description: string;
-  code: string;
-  producer: string;
-  category: string;
-  isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  isActive: boolean;
   deletedAt: string | null;
+};
+
+type Linea = BaseEntity & {
+  nome: string;
+  descrizione: string;
+  ordine: number | null;
+};
+
+type ProdottoGrezzo = BaseEntity & {
+  nome: string;
+  descrizione: string;
+};
+
+type Varieta = BaseEntity & {
+  nome: string;
+  descrizione: string;
+  prodottoGrezzoId: string;
+};
+
+type ImballaggioSecondario = BaseEntity & {
+  nome: string;
+  descrizione: string;
+  taraKg: number | null;
+  lunghezzaCm: number | null;
+  larghezzaCm: number | null;
+  altezzaCm: number | null;
+};
+
+type Articolo = BaseEntity & {
+  nome: string;
+  descrizione: string;
+  pesoPerCollo: number;
+  pesoVariabile: boolean;
+  vincoloProdottoGrezzoId: string | null;
+  vincoloVarietaId: string | null;
+};
+
+type SiglaLotto = BaseEntity & {
+  codice: string;
+  produttore: string;
+  prodottoGrezzoId: string;
+  varietaId: string;
+  campo: string;
 };
 
 type SortDirection = 'none' | 'asc' | 'desc';
 
 type SortState = {
-  key: keyof RegistryRecord;
+  key: string;
   direction: SortDirection;
 };
 
-type RegistryDefinition = {
-  key: RegistryKey;
-  label: string;
-  description: string;
-  searchPlaceholder: string;
+type Filters = {
+  search: string;
+  stato: 'all' | 'active' | 'inactive';
 };
-
-const REGISTRY_DEFINITIONS: RegistryDefinition[] = [
-  {
-    key: 'linee',
-    label: 'Linee',
-    description: 'Gestione linee con ordinamento operativo e stato attivo/disattivo.',
-    searchPlaceholder: 'Cerca linea per nome o descrizione...'
-  },
-  {
-    key: 'prodotti-grezzi',
-    label: 'Prodotti Grezzi',
-    description: 'Anagrafica prodotto origine per associare varietà e articoli.',
-    searchPlaceholder: 'Cerca prodotto grezzo per nome o categoria...'
-  },
-  {
-    key: 'varieta',
-    label: 'Varietà',
-    description: 'Catalogo varietà legate ai prodotti grezzi e filiere.',
-    searchPlaceholder: 'Cerca varietà, categoria o descrizione...'
-  },
-  {
-    key: 'imballaggi-secondari',
-    label: 'Imballaggi Secondari',
-    description: 'Gestione imballaggi disponibili per confezionamento.',
-    searchPlaceholder: 'Cerca imballaggio per codice o nome...'
-  },
-  {
-    key: 'articoli',
-    label: 'Articoli',
-    description: 'Anagrafica articoli commerciali e criteri di confezionamento.',
-    searchPlaceholder: 'Cerca articolo per codice, nome o produttore...'
-  },
-  {
-    key: 'sigle-lotto',
-    label: 'Sigle Lotto',
-    description: 'Tabella sigle lotto abilitate per apertura lavorazioni.',
-    searchPlaceholder: 'Cerca sigla lotto per codice, produttore o categoria...'
-  }
-];
-
-const INITIAL_DATA: Record<RegistryKey, RegistryRecord[]> = {
-  linee: [
-    createRecord('Linea 01', 'Linea confezionamento premium', 'L01', 'Monito', 'Confezionamento'),
-    createRecord('Linea 02', 'Linea calibratura automatica', 'L02', 'Monito', 'Calibratura'),
-    createRecord('Linea 03', 'Linea mista agrumi', 'L03', 'Monito', 'Mista')
-  ],
-  'prodotti-grezzi': [
-    createRecord('Uva da Tavola', 'Prodotto grezzo da filiera locale', 'PG01', 'Azienda Sole', 'Uva'),
-    createRecord('Albicocche', 'Origine certificata', 'PG02', 'Cooperativa Sud', 'Drupacee'),
-    createRecord('Mandarini', 'Conferimento giornaliero', 'PG03', 'Consorzio Nord', 'Agrumi')
-  ],
-  varieta: [
-    createRecord('Italia', 'Varietà uva bianca', 'V01', 'Azienda Sole', 'Uva'),
-    createRecord('Mogador', 'Varietà albicocca tardiva', 'V02', 'Cooperativa Sud', 'Drupacee'),
-    createRecord('Nadorcott', 'Mandarino premium', 'V03', 'Consorzio Nord', 'Agrumi')
-  ],
-  'imballaggi-secondari': [
-    createRecord('Cartone 40x60', 'Imballaggio standard export', 'IMB01', 'Pack SRL', 'Cartone'),
-    createRecord('Bins', 'Contenitore grande capacità', 'IMB02', 'Pack SRL', 'Plastica'),
-    createRecord('Cassa Legno', 'Imballaggio premium retail', 'IMB03', 'Wood Pack', 'Legno')
-  ],
-  articoli: [
-    createRecord('Uva 500g', 'Confezione retail 500g', 'ART01', 'Azienda Sole', 'Retail'),
-    createRecord('Albicocca 30x30', 'Vassoio standard', 'ART02', 'Cooperativa Sud', 'Standard'),
-    createRecord('Mandarino 1kg', 'Confezione rete 1kg', 'ART03', 'Consorzio Nord', 'Retail')
-  ],
-  'sigle-lotto': [
-    createRecord('Lotto 2026-001', 'Sigla lotto annuale', '2012', 'Azienda Sole', 'Uva Italia'),
-    createRecord('Lotto 2026-002', 'Sigla lotto drupacee', '2205', 'Cooperativa Sud', 'Albicocca Mogador'),
-    createRecord('Lotto 2026-003', 'Sigla lotto agrumi', '2311', 'Consorzio Nord', 'Mandarino Nadorcott')
-  ]
-};
-
-const TABLE_COLUMNS: { key: keyof RegistryRecord; label: string; sortable: boolean }[] = [
-  { key: 'code', label: 'Codice', sortable: true },
-  { key: 'name', label: 'Nome', sortable: true },
-  { key: 'producer', label: 'Produttore', sortable: true },
-  { key: 'category', label: 'Categoria', sortable: true },
-  { key: 'updatedAt', label: 'Ultimo aggiornamento', sortable: true },
-  { key: 'isActive', label: 'Stato', sortable: true }
-];
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20];
 
+const defaultFilters: Filters = {
+  search: '',
+  stato: 'all'
+};
+
 export function RegistryManager() {
-  const [selectedRegistry, setSelectedRegistry] = useState<RegistryKey>('linee');
-  const [recordsByRegistry, setRecordsByRegistry] = useState<Record<RegistryKey, RegistryRecord[]>>(INITIAL_DATA);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [producerFilter, setProducerFilter] = useState('all');
-  const [sortState, setSortState] = useState<SortState>({ key: 'updatedAt', direction: 'none' });
+  const [linee, setLinee] = useState<Linea[]>([
+    createBase({ nome: 'Linea 01', descrizione: 'Confezionamento premium', ordine: 1 }),
+    createBase({ nome: 'Linea 02', descrizione: 'Calibratura automatica', ordine: 2 })
+  ]);
+  const [prodottiGrezzi, setProdottiGrezzi] = useState<ProdottoGrezzo[]>([
+    createBase({ nome: 'Uva da tavola', descrizione: 'Conferimenti locali' }),
+    createBase({ nome: 'Mandarino', descrizione: 'Campagna invernale' })
+  ]);
+  const [varieta, setVarieta] = useState<Varieta[]>(() => {
+    const [uva, mandarino] = prodottiGrezzi;
+    return [
+      createBase({ nome: 'Italia', descrizione: 'Uva bianca', prodottoGrezzoId: uva.id }),
+      createBase({ nome: 'Nadorcott', descrizione: 'Mandarino tardivo', prodottoGrezzoId: mandarino.id })
+    ];
+  });
+  const [imballaggiSecondari, setImballaggiSecondari] = useState<ImballaggioSecondario[]>([
+    createBase({
+      nome: 'Cartone 40x60',
+      descrizione: 'Standard export',
+      taraKg: 0.8,
+      lunghezzaCm: 60,
+      larghezzaCm: 40,
+      altezzaCm: 20
+    }),
+    createBase({
+      nome: 'Bins',
+      descrizione: 'Grande capacità',
+      taraKg: 18,
+      lunghezzaCm: 120,
+      larghezzaCm: 100,
+      altezzaCm: 78
+    })
+  ]);
+  const [articoli, setArticoli] = useState<Articolo[]>(() => {
+    const [uva] = prodottiGrezzi;
+    return [
+      createBase({
+        nome: 'Uva 500g',
+        descrizione: 'Confezione retail',
+        pesoPerCollo: 0.5,
+        pesoVariabile: false,
+        vincoloProdottoGrezzoId: uva.id,
+        vincoloVarietaId: null
+      }),
+      createBase({
+        nome: 'Misto premium',
+        descrizione: 'Peso variabile',
+        pesoPerCollo: 1,
+        pesoVariabile: true,
+        vincoloProdottoGrezzoId: null,
+        vincoloVarietaId: null
+      })
+    ];
+  });
+  const [sigleLotto, setSigleLotto] = useState<SiglaLotto[]>(() => {
+    const [uva] = prodottiGrezzi;
+    return [
+      createBase({ codice: '2012', produttore: 'Azienda Sole', prodottoGrezzoId: uva.id, varietaId: '', campo: 'A12' })
+    ];
+  });
+
+  const [selectedEntity, setSelectedEntity] = useState<EntityKey>('linee');
+  const [filters, setFilters] = useState<Filters>(defaultFilters);
+  const [sortState, setSortState] = useState<SortState>({ key: 'updatedAt', direction: 'desc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
-  const [formValues, setFormValues] = useState({ name: '', description: '', code: '', producer: '', category: '' });
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const activeDefinition = REGISTRY_DEFINITIONS.find((definition) => definition.key === selectedRegistry);
-  const allRecords = recordsByRegistry[selectedRegistry];
+  const [lineaForm, setLineaForm] = useState({ nome: '', descrizione: '', ordine: '' });
+  const [prodottoForm, setProdottoForm] = useState({ nome: '', descrizione: '' });
+  const [varietaForm, setVarietaForm] = useState({ nome: '', descrizione: '', prodottoGrezzoId: '' });
+  const [imballaggioForm, setImballaggioForm] = useState({
+    nome: '',
+    descrizione: '',
+    taraKg: '',
+    lunghezzaCm: '',
+    larghezzaCm: '',
+    altezzaCm: ''
+  });
+  const [articoloForm, setArticoloForm] = useState({
+    nome: '',
+    descrizione: '',
+    pesoPerCollo: '',
+    pesoVariabile: false,
+    vincoloProdottoGrezzoId: '',
+    vincoloVarietaId: ''
+  });
+  const [siglaForm, setSiglaForm] = useState({
+    codice: '',
+    produttore: '',
+    prodottoGrezzoId: '',
+    varietaId: '',
+    campo: ''
+  });
 
-  const availableCategories = useMemo(() => {
-    const categories = new Set(allRecords.map((record) => record.category));
-    return ['all', ...Array.from(categories).sort((a, b) => a.localeCompare(b, 'it'))];
-  }, [allRecords]);
+  const varietaPerProdotto = useMemo(() => {
+    const map = new Map<string, Varieta[]>();
 
-  const availableProducers = useMemo(() => {
-    const producers = new Set(allRecords.map((record) => record.producer));
-    return ['all', ...Array.from(producers).sort((a, b) => a.localeCompare(b, 'it'))];
-  }, [allRecords]);
-
-  const filteredRecords = useMemo(() => {
-    const normalizedSearch = search.trim().toLocaleLowerCase('it');
-
-    return allRecords.filter((record) => {
-      const fullText = `${record.code} ${record.name} ${record.description} ${record.producer} ${record.category}`.toLocaleLowerCase('it');
-      const matchesSearch = normalizedSearch.length === 0 || fullText.includes(normalizedSearch);
-      const matchesStatus =
-        statusFilter === 'all' || (statusFilter === 'active' ? record.isActive : !record.isActive);
-      const matchesCategory = categoryFilter === 'all' || record.category === categoryFilter;
-      const matchesProducer = producerFilter === 'all' || record.producer === producerFilter;
-
-      return matchesSearch && matchesStatus && matchesCategory && matchesProducer;
-    });
-  }, [allRecords, categoryFilter, producerFilter, search, statusFilter]);
-
-  const sortedRecords = useMemo(() => {
-    if (sortState.direction === 'none') {
-      return filteredRecords;
+    for (const item of varieta) {
+      const current = map.get(item.prodottoGrezzoId) ?? [];
+      current.push(item);
+      map.set(item.prodottoGrezzoId, current);
     }
 
-    return [...filteredRecords].sort((first, second) => {
-      const firstValue = first[sortState.key];
-      const secondValue = second[sortState.key];
+    return map;
+  }, [varieta]);
 
+  const activeVarietaForArticolo = useMemo(() => {
+    if (!articoloForm.vincoloProdottoGrezzoId) {
+      return varieta;
+    }
+
+    return varieta.filter((item) => item.prodottoGrezzoId === articoloForm.vincoloProdottoGrezzoId);
+  }, [articoloForm.vincoloProdottoGrezzoId, varieta]);
+
+  const activeVarietaForSigla = useMemo(() => {
+    if (!siglaForm.prodottoGrezzoId) {
+      return [];
+    }
+
+    return varieta.filter((item) => item.prodottoGrezzoId === siglaForm.prodottoGrezzoId);
+  }, [siglaForm.prodottoGrezzoId, varieta]);
+
+  const dataRows = useMemo(() => {
+    const list = getEntityRows(selectedEntity, {
+      linee,
+      prodottiGrezzi,
+      varieta,
+      imballaggiSecondari,
+      articoli,
+      sigleLotto
+    });
+
+    const searched = list.filter((row) => {
+      const fullText = row.searchText.toLocaleLowerCase('it');
+      const search = filters.search.trim().toLocaleLowerCase('it');
+      const searchOk = search.length === 0 || fullText.includes(search);
+      const statoOk =
+        filters.stato === 'all' || (filters.stato === 'active' ? row.isActive : !row.isActive);
+
+      return searchOk && statoOk;
+    });
+
+    if (sortState.direction === 'none') {
+      return searched;
+    }
+
+    return [...searched].sort((a, b) => {
       const sortFactor = sortState.direction === 'asc' ? 1 : -1;
-
-      if (typeof firstValue === 'boolean' && typeof secondValue === 'boolean') {
-        return (Number(firstValue) - Number(secondValue)) * sortFactor;
-      }
-
-      return String(firstValue).localeCompare(String(secondValue), 'it') * sortFactor;
+      const first = String(a.sortValue(sortState.key));
+      const second = String(b.sortValue(sortState.key));
+      return first.localeCompare(second, 'it') * sortFactor;
     });
-  }, [filteredRecords, sortState]);
+  }, [selectedEntity, linee, prodottiGrezzi, varieta, imballaggiSecondari, articoli, sigleLotto, filters, sortState]);
 
-  const totalPages = Math.max(1, Math.ceil(sortedRecords.length / pageSize));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const startIndex = (safeCurrentPage - 1) * pageSize;
-  const pagedRecords = sortedRecords.slice(startIndex, startIndex + pageSize);
+  const columns = getColumns(selectedEntity);
+  const totalPages = Math.max(1, Math.ceil(dataRows.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedRows = dataRows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  function handleRegistryChange(registryKey: RegistryKey) {
-    setSelectedRegistry(registryKey);
-    setSearch('');
-    setStatusFilter('all');
-    setCategoryFilter('all');
-    setProducerFilter('all');
-    setSortState({ key: 'updatedAt', direction: 'none' });
+  function resetCommonUi(nextEntity?: EntityKey) {
+    if (nextEntity) {
+      setSelectedEntity(nextEntity);
+    }
+
+    setFilters(defaultFilters);
+    setSortState({ key: 'updatedAt', direction: 'desc' });
     setCurrentPage(1);
-    setEditingRecordId(null);
-    setFormValues({ name: '', description: '', code: '', producer: '', category: '' });
+    setEditingId(null);
   }
 
-  function handleColumnSort(columnKey: keyof RegistryRecord) {
-    setSortState((prevState) => {
-      if (prevState.key !== columnKey) {
-        return { key: columnKey, direction: 'asc' };
-      }
-
-      if (prevState.direction === 'asc') {
-        return { key: columnKey, direction: 'desc' };
-      }
-
-      if (prevState.direction === 'desc') {
-        return { key: columnKey, direction: 'none' };
-      }
-
-      return { key: columnKey, direction: 'asc' };
-    });
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!formValues.name.trim() || !formValues.code.trim()) {
-      return;
-    }
+    const now = new Date().toISOString();
 
-    const nowIso = new Date().toISOString();
-
-    setRecordsByRegistry((prevState) => {
-      const registryRecords = prevState[selectedRegistry];
-
-      if (editingRecordId) {
-        const updatedRecords = registryRecords.map((record) => {
-          if (record.id !== editingRecordId) {
-            return record;
-          }
-
-          return {
-            ...record,
-            name: formValues.name.trim(),
-            description: formValues.description.trim(),
-            code: formValues.code.trim(),
-            producer: formValues.producer.trim(),
-            category: formValues.category.trim(),
-            updatedAt: nowIso
-          };
-        });
-
-        return { ...prevState, [selectedRegistry]: updatedRecords };
+    if (selectedEntity === 'linee') {
+      if (!lineaForm.nome.trim()) {
+        return;
       }
 
-      const newRecord: RegistryRecord = {
-        id: crypto.randomUUID(),
-        name: formValues.name.trim(),
-        description: formValues.description.trim(),
-        code: formValues.code.trim(),
-        producer: formValues.producer.trim() || 'N/D',
-        category: formValues.category.trim() || 'Generica',
-        isActive: true,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        deletedAt: null
+      if (editingId) {
+        setLinee((prev) =>
+          prev.map((item) =>
+            item.id === editingId
+              ? {
+                  ...item,
+                  nome: lineaForm.nome.trim(),
+                  descrizione: lineaForm.descrizione.trim(),
+                  ordine: lineaForm.ordine ? Number(lineaForm.ordine) : null,
+                  updatedAt: now
+                }
+              : item
+          )
+        );
+      } else {
+        setLinee((prev) => [
+          createBase({
+            nome: lineaForm.nome.trim(),
+            descrizione: lineaForm.descrizione.trim(),
+            ordine: lineaForm.ordine ? Number(lineaForm.ordine) : null
+          }),
+          ...prev
+        ]);
+      }
+
+      setLineaForm({ nome: '', descrizione: '', ordine: '' });
+    }
+
+    if (selectedEntity === 'prodottiGrezzi') {
+      if (!prodottoForm.nome.trim()) {
+        return;
+      }
+
+      if (editingId) {
+        setProdottiGrezzi((prev) =>
+          prev.map((item) =>
+            item.id === editingId
+              ? { ...item, nome: prodottoForm.nome.trim(), descrizione: prodottoForm.descrizione.trim(), updatedAt: now }
+              : item
+          )
+        );
+      } else {
+        setProdottiGrezzi((prev) => [createBase({ nome: prodottoForm.nome.trim(), descrizione: prodottoForm.descrizione.trim() }), ...prev]);
+      }
+
+      setProdottoForm({ nome: '', descrizione: '' });
+    }
+
+    if (selectedEntity === 'varieta') {
+      if (!varietaForm.nome.trim() || !varietaForm.prodottoGrezzoId) {
+        return;
+      }
+
+      if (editingId) {
+        setVarieta((prev) =>
+          prev.map((item) =>
+            item.id === editingId
+              ? {
+                  ...item,
+                  nome: varietaForm.nome.trim(),
+                  descrizione: varietaForm.descrizione.trim(),
+                  prodottoGrezzoId: varietaForm.prodottoGrezzoId,
+                  updatedAt: now
+                }
+              : item
+          )
+        );
+      } else {
+        setVarieta((prev) => [
+          createBase({
+            nome: varietaForm.nome.trim(),
+            descrizione: varietaForm.descrizione.trim(),
+            prodottoGrezzoId: varietaForm.prodottoGrezzoId
+          }),
+          ...prev
+        ]);
+      }
+
+      setVarietaForm({ nome: '', descrizione: '', prodottoGrezzoId: '' });
+    }
+
+    if (selectedEntity === 'imballaggiSecondari') {
+      if (!imballaggioForm.nome.trim()) {
+        return;
+      }
+
+      const payload = {
+        nome: imballaggioForm.nome.trim(),
+        descrizione: imballaggioForm.descrizione.trim(),
+        taraKg: toNumberOrNull(imballaggioForm.taraKg),
+        lunghezzaCm: toNumberOrNull(imballaggioForm.lunghezzaCm),
+        larghezzaCm: toNumberOrNull(imballaggioForm.larghezzaCm),
+        altezzaCm: toNumberOrNull(imballaggioForm.altezzaCm)
       };
 
-      return {
-        ...prevState,
-        [selectedRegistry]: [newRecord, ...registryRecords]
-      };
-    });
+      if (editingId) {
+        setImballaggiSecondari((prev) => prev.map((item) => (item.id === editingId ? { ...item, ...payload, updatedAt: now } : item)));
+      } else {
+        setImballaggiSecondari((prev) => [createBase(payload), ...prev]);
+      }
 
-    setEditingRecordId(null);
-    setFormValues({ name: '', description: '', code: '', producer: '', category: '' });
+      setImballaggioForm({ nome: '', descrizione: '', taraKg: '', lunghezzaCm: '', larghezzaCm: '', altezzaCm: '' });
+    }
+
+    if (selectedEntity === 'articoli') {
+      if (!articoloForm.nome.trim() || !articoloForm.pesoPerCollo) {
+        return;
+      }
+
+      const payload = {
+        nome: articoloForm.nome.trim(),
+        descrizione: articoloForm.descrizione.trim(),
+        pesoPerCollo: Number(articoloForm.pesoPerCollo),
+        pesoVariabile: articoloForm.pesoVariabile,
+        vincoloProdottoGrezzoId: articoloForm.vincoloProdottoGrezzoId || null,
+        vincoloVarietaId: articoloForm.vincoloVarietaId || null
+      };
+
+      if (editingId) {
+        setArticoli((prev) => prev.map((item) => (item.id === editingId ? { ...item, ...payload, updatedAt: now } : item)));
+      } else {
+        setArticoli((prev) => [createBase(payload), ...prev]);
+      }
+
+      setArticoloForm({
+        nome: '',
+        descrizione: '',
+        pesoPerCollo: '',
+        pesoVariabile: false,
+        vincoloProdottoGrezzoId: '',
+        vincoloVarietaId: ''
+      });
+    }
+
+    if (selectedEntity === 'sigleLotto') {
+      if (!siglaForm.codice.trim() || !siglaForm.produttore.trim() || !siglaForm.prodottoGrezzoId || !siglaForm.varietaId) {
+        return;
+      }
+
+      const payload = {
+        codice: siglaForm.codice.trim(),
+        produttore: siglaForm.produttore.trim(),
+        prodottoGrezzoId: siglaForm.prodottoGrezzoId,
+        varietaId: siglaForm.varietaId,
+        campo: siglaForm.campo.trim()
+      };
+
+      if (editingId) {
+        setSigleLotto((prev) => prev.map((item) => (item.id === editingId ? { ...item, ...payload, updatedAt: now } : item)));
+      } else {
+        setSigleLotto((prev) => [createBase(payload), ...prev]);
+      }
+
+      setSiglaForm({ codice: '', produttore: '', prodottoGrezzoId: '', varietaId: '', campo: '' });
+    }
+
+    setEditingId(null);
     setCurrentPage(1);
   }
 
-  function handleEdit(record: RegistryRecord) {
-    setEditingRecordId(record.id);
-    setFormValues({
-      name: record.name,
-      description: record.description,
-      code: record.code,
-      producer: record.producer,
-      category: record.category
-    });
+  function onEdit(id: string) {
+    setEditingId(id);
+
+    if (selectedEntity === 'linee') {
+      const row = linee.find((item) => item.id === id);
+      if (!row) return;
+      setLineaForm({ nome: row.nome, descrizione: row.descrizione, ordine: row.ordine ? String(row.ordine) : '' });
+    }
+
+    if (selectedEntity === 'prodottiGrezzi') {
+      const row = prodottiGrezzi.find((item) => item.id === id);
+      if (!row) return;
+      setProdottoForm({ nome: row.nome, descrizione: row.descrizione });
+    }
+
+    if (selectedEntity === 'varieta') {
+      const row = varieta.find((item) => item.id === id);
+      if (!row) return;
+      setVarietaForm({ nome: row.nome, descrizione: row.descrizione, prodottoGrezzoId: row.prodottoGrezzoId });
+    }
+
+    if (selectedEntity === 'imballaggiSecondari') {
+      const row = imballaggiSecondari.find((item) => item.id === id);
+      if (!row) return;
+      setImballaggioForm({
+        nome: row.nome,
+        descrizione: row.descrizione,
+        taraKg: row.taraKg ? String(row.taraKg) : '',
+        lunghezzaCm: row.lunghezzaCm ? String(row.lunghezzaCm) : '',
+        larghezzaCm: row.larghezzaCm ? String(row.larghezzaCm) : '',
+        altezzaCm: row.altezzaCm ? String(row.altezzaCm) : ''
+      });
+    }
+
+    if (selectedEntity === 'articoli') {
+      const row = articoli.find((item) => item.id === id);
+      if (!row) return;
+      setArticoloForm({
+        nome: row.nome,
+        descrizione: row.descrizione,
+        pesoPerCollo: String(row.pesoPerCollo),
+        pesoVariabile: row.pesoVariabile,
+        vincoloProdottoGrezzoId: row.vincoloProdottoGrezzoId ?? '',
+        vincoloVarietaId: row.vincoloVarietaId ?? ''
+      });
+    }
+
+    if (selectedEntity === 'sigleLotto') {
+      const row = sigleLotto.find((item) => item.id === id);
+      if (!row) return;
+      setSiglaForm({
+        codice: row.codice,
+        produttore: row.produttore,
+        prodottoGrezzoId: row.prodottoGrezzoId,
+        varietaId: row.varietaId,
+        campo: row.campo
+      });
+    }
   }
 
-  function handleSoftDelete(recordId: string) {
-    setRecordsByRegistry((prevState) => ({
-      ...prevState,
-      [selectedRegistry]: prevState[selectedRegistry].map((record) =>
-        record.id === recordId
-          ? { ...record, isActive: false, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-          : record
-      )
-    }));
-  }
+  function toggleActive(id: string, active: boolean) {
+    const now = new Date().toISOString();
 
-  function handleRestore(recordId: string) {
-    setRecordsByRegistry((prevState) => ({
-      ...prevState,
-      [selectedRegistry]: prevState[selectedRegistry].map((record) =>
-        record.id === recordId
-          ? { ...record, isActive: true, deletedAt: null, updatedAt: new Date().toISOString() }
-          : record
-      )
-    }));
+    if (selectedEntity === 'linee') {
+      setLinee((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: active, deletedAt: active ? null : now, updatedAt: now } : item)));
+    }
+
+    if (selectedEntity === 'prodottiGrezzi') {
+      setProdottiGrezzi((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: active, deletedAt: active ? null : now, updatedAt: now } : item)));
+    }
+
+    if (selectedEntity === 'varieta') {
+      setVarieta((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: active, deletedAt: active ? null : now, updatedAt: now } : item)));
+    }
+
+    if (selectedEntity === 'imballaggiSecondari') {
+      setImballaggiSecondari((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: active, deletedAt: active ? null : now, updatedAt: now } : item)));
+    }
+
+    if (selectedEntity === 'articoli') {
+      setArticoli((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: active, deletedAt: active ? null : now, updatedAt: now } : item)));
+    }
+
+    if (selectedEntity === 'sigleLotto') {
+      setSigleLotto((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: active, deletedAt: active ? null : now, updatedAt: now } : item)));
+    }
   }
 
   return (
     <section className="grid gap-6 lg:grid-cols-[260px_1fr]">
       <aside className="rounded-xl border border-slate-200 bg-surface p-4 shadow-sm">
-        <h1 className="mb-4 text-xl font-semibold text-primary">Anagrafiche</h1>
-        <nav className="space-y-2">
-          {REGISTRY_DEFINITIONS.map((definition) => {
-            const isSelected = definition.key === selectedRegistry;
-
-            return (
-              <button
-                key={definition.key}
-                type="button"
-                onClick={() => handleRegistryChange(definition.key)}
-                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
-                  isSelected
-                    ? 'border-primary bg-blue-50 text-primary'
-                    : 'border-slate-200 text-secondary hover:border-primary hover:text-primary'
-                }`}
-              >
-                {definition.label}
-              </button>
-            );
-          })}
-        </nav>
+        <h1 className="mb-4 text-xl font-semibold text-primary">Gestione Anagrafiche</h1>
+        <div className="space-y-2">
+          {ENTITY_MENU.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => resetCommonUi(item.key)}
+              className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${
+                selectedEntity === item.key
+                  ? 'border-primary bg-blue-50 text-primary'
+                  : 'border-slate-200 text-secondary hover:border-primary hover:text-primary'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </aside>
 
       <div className="space-y-4">
         <header className="rounded-xl border border-slate-200 bg-surface p-4 shadow-sm">
-          <h2 className="text-lg font-semibold text-primary">{activeDefinition?.label}</h2>
-          <p className="mt-1 text-sm text-secondary">{activeDefinition?.description}</p>
+          <h2 className="text-lg font-semibold text-primary">{ENTITY_MENU.find((x) => x.key === selectedEntity)?.label}</h2>
+          <p className="mt-1 text-sm text-secondary">{ENTITY_MENU.find((x) => x.key === selectedEntity)?.description}</p>
         </header>
 
-        <form onSubmit={handleSubmit} className="rounded-xl border border-slate-200 bg-surface p-4 shadow-sm">
+        <form onSubmit={submitForm} className="rounded-xl border border-slate-200 bg-surface p-4 shadow-sm">
           <p className="mb-3 text-sm font-medium text-primary">
-            {editingRecordId ? 'Modifica anagrafica selezionata' : 'Aggiungi una nuova anagrafica'}
+            {editingId ? 'Modifica elemento selezionato' : ENTITY_MENU.find((x) => x.key === selectedEntity)?.ctaLabel}
           </p>
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <input
-              value={formValues.code}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, code: event.target.value }))}
-              placeholder="Codice *"
-              required
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary"
-            />
-            <input
-              value={formValues.name}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, name: event.target.value }))}
-              placeholder="Nome *"
-              required
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary"
-            />
-            <input
-              value={formValues.producer}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, producer: event.target.value }))}
-              placeholder="Produttore"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary"
-            />
-            <input
-              value={formValues.category}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, category: event.target.value }))}
-              placeholder="Categoria"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary"
-            />
-            <input
-              value={formValues.description}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, description: event.target.value }))}
-              placeholder="Descrizione"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary md:col-span-2 xl:col-span-1"
-            />
-          </div>
+          {selectedEntity === 'linee' ? renderLineaForm(lineaForm, setLineaForm) : null}
+          {selectedEntity === 'prodottiGrezzi' ? renderProdottoForm(prodottoForm, setProdottoForm) : null}
+          {selectedEntity === 'varieta'
+            ? renderVarietaForm(varietaForm, setVarietaForm, prodottiGrezzi)
+            : null}
+          {selectedEntity === 'imballaggiSecondari' ? renderImballaggioForm(imballaggioForm, setImballaggioForm) : null}
+          {selectedEntity === 'articoli'
+            ? renderArticoloForm(articoloForm, setArticoloForm, prodottiGrezzi, activeVarietaForArticolo)
+            : null}
+          {selectedEntity === 'sigleLotto'
+            ? renderSiglaForm(siglaForm, setSiglaForm, prodottiGrezzi, activeVarietaForSigla)
+            : null}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="submit" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-              {editingRecordId ? 'Salva modifiche' : 'Aggiungi'}
+              {editingId ? 'Salva modifiche' : 'Salva'}
             </button>
-            {editingRecordId ? (
+            {editingId ? (
               <button
                 type="button"
                 onClick={() => {
-                  setEditingRecordId(null);
-                  setFormValues({ name: '', description: '', code: '', producer: '', category: '' });
+                  setEditingId(null);
+                  resetEntityForms({
+                    setLineaForm,
+                    setProdottoForm,
+                    setVarietaForm,
+                    setImballaggioForm,
+                    setArticoloForm,
+                    setSiglaForm
+                  });
                 }}
                 className="rounded-md border border-slate-300 px-4 py-2 text-sm text-secondary hover:border-primary hover:text-primary"
               >
-                Annulla
+                Annulla modifica
               </button>
             ) : null}
           </div>
         </form>
 
         <section className="rounded-xl border border-slate-200 bg-surface p-4 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-3">
             <input
-              value={search}
+              value={filters.search}
               onChange={(event) => {
-                setSearch(event.target.value);
+                setFilters((prev) => ({ ...prev, search: event.target.value }));
                 setCurrentPage(1);
               }}
-              placeholder={activeDefinition?.searchPlaceholder}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary xl:col-span-2"
+              placeholder="Ricerca rapida..."
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary md:col-span-2"
             />
-
             <select
-              value={statusFilter}
+              value={filters.stato}
               onChange={(event) => {
-                setStatusFilter(event.target.value as 'all' | 'active' | 'inactive');
+                setFilters((prev) => ({ ...prev, stato: event.target.value as Filters['stato'] }));
                 setCurrentPage(1);
               }}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary"
             >
-              <option value="all">Stato: tutti</option>
+              <option value="all">Tutti gli stati</option>
               <option value="active">Solo attivi</option>
               <option value="inactive">Solo disattivati</option>
-            </select>
-
-            <select
-              value={categoryFilter}
-              onChange={(event) => {
-                setCategoryFilter(event.target.value);
-                setCurrentPage(1);
-              }}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary"
-            >
-              {availableCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category === 'all' ? 'Categoria: tutte' : category}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={producerFilter}
-              onChange={(event) => {
-                setProducerFilter(event.target.value);
-                setCurrentPage(1);
-              }}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary"
-            >
-              {availableProducers.map((producer) => (
-                <option key={producer} value={producer}>
-                  {producer === 'all' ? 'Produttore: tutti' : producer}
-                </option>
-              ))}
             </select>
           </div>
         </section>
@@ -457,15 +606,14 @@ export function RegistryManager() {
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-secondary">
                 <tr>
-                  {TABLE_COLUMNS.map((column) => (
+                  {columns.map((column) => (
                     <th key={column.key} className="px-4 py-3">
                       <button
                         type="button"
-                        onClick={() => column.sortable && handleColumnSort(column.key)}
+                        onClick={() => toggleSort(column.key)}
                         className="inline-flex items-center gap-2 text-left hover:text-primary"
                       >
-                        {column.label}
-                        {sortState.key === column.key ? <span>{sortIcon(sortState.direction)}</span> : <span>↕</span>}
+                        {column.label} {sortState.key === column.key ? sortIcon(sortState.direction) : '↕'}
                       </button>
                     </th>
                   ))}
@@ -473,55 +621,40 @@ export function RegistryManager() {
                 </tr>
               </thead>
               <tbody>
-                {pagedRecords.length === 0 ? (
+                {pagedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={TABLE_COLUMNS.length + 1} className="px-4 py-6 text-center text-secondary">
-                      Nessun risultato con i filtri correnti.
+                    <td colSpan={columns.length + 1} className="px-4 py-6 text-center text-secondary">
+                      Nessun risultato.
                     </td>
                   </tr>
                 ) : (
-                  pagedRecords.map((record) => (
-                    <tr key={record.id} className="border-t border-slate-100">
-                      <td className="px-4 py-3 font-medium text-primary">{record.code}</td>
-                      <td className="px-4 py-3">{record.name}</td>
-                      <td className="px-4 py-3">{record.producer}</td>
-                      <td className="px-4 py-3">{record.category}</td>
-                      <td className="px-4 py-3">{formatDateTime(record.updatedAt)}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`rounded-full px-2 py-1 text-xs font-medium ${
-                            record.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-                          }`}
-                        >
-                          {record.isActive ? 'Attivo' : 'Disattivato'}
-                        </span>
-                      </td>
+                  pagedRows.map((row) => (
+                    <tr key={row.id} className="border-t border-slate-100">
+                      {columns.map((column) => (
+                        <td key={`${row.id}-${column.key}`} className="px-4 py-3">
+                          {row.renderCell(column.key, { prodottiGrezzi, varieta })}
+                        </td>
+                      ))}
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => handleEdit(record)}
+                            onClick={() => onEdit(row.id)}
                             className="rounded-md border border-slate-300 px-2 py-1 text-xs text-secondary hover:border-primary hover:text-primary"
                           >
                             Modifica
                           </button>
-                          {record.isActive ? (
-                            <button
-                              type="button"
-                              onClick={() => handleSoftDelete(record.id)}
-                              className="rounded-md border border-red-200 px-2 py-1 text-xs text-error hover:bg-red-50"
-                            >
-                              Disattiva
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleRestore(record.id)}
-                              className="rounded-md border border-emerald-200 px-2 py-1 text-xs text-success hover:bg-emerald-50"
-                            >
-                              Riattiva
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => toggleActive(row.id, !row.isActive)}
+                            className={`rounded-md border px-2 py-1 text-xs ${
+                              row.isActive
+                                ? 'border-red-200 text-error hover:bg-red-50'
+                                : 'border-emerald-200 text-success hover:bg-emerald-50'
+                            }`}
+                          >
+                            {row.isActive ? 'Disattiva' : 'Riattiva'}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -533,10 +666,8 @@ export function RegistryManager() {
 
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 p-4 text-sm text-secondary">
             <div>
-              Risultati: <strong>{sortedRecords.length}</strong> · Pagina <strong>{safeCurrentPage}</strong> di{' '}
-              <strong>{totalPages}</strong>
+              Risultati: <strong>{dataRows.length}</strong> · Pagina <strong>{safePage}</strong> di <strong>{totalPages}</strong>
             </div>
-
             <div className="flex items-center gap-2">
               <label htmlFor="page-size">Righe:</label>
               <select
@@ -555,105 +686,243 @@ export function RegistryManager() {
                 ))}
               </select>
             </div>
-
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setCurrentPage(1)}
-                disabled={safeCurrentPage === 1}
-                className="rounded-md border border-slate-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                «
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={safeCurrentPage === 1}
-                className="rounded-md border border-slate-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                ‹
-              </button>
-              {buildVisiblePages(safeCurrentPage, totalPages).map((page) => (
+              <PagerButton label="«" onClick={() => setCurrentPage(1)} disabled={safePage === 1} />
+              <PagerButton label="‹" onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))} disabled={safePage === 1} />
+              {buildVisiblePages(safePage, totalPages).map((page) => (
                 <button
                   key={page}
                   type="button"
                   onClick={() => setCurrentPage(page)}
                   className={`rounded-md border px-2 py-1 ${
-                    page === safeCurrentPage ? 'border-primary bg-blue-50 text-primary' : 'border-slate-300'
+                    page === safePage ? 'border-primary bg-blue-50 text-primary' : 'border-slate-300'
                   }`}
                 >
                   {page}
                 </button>
               ))}
-              <button
-                type="button"
+              <PagerButton
+                label="›"
                 onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={safeCurrentPage === totalPages}
-                className="rounded-md border border-slate-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                ›
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage(totalPages)}
-                disabled={safeCurrentPage === totalPages}
-                className="rounded-md border border-slate-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                »
-              </button>
+                disabled={safePage === totalPages}
+              />
+              <PagerButton label="»" onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages} />
             </div>
           </footer>
         </section>
       </div>
     </section>
   );
+
+  function toggleSort(key: string) {
+    setSortState((prev) => {
+      if (prev.key !== key) return { key, direction: 'asc' };
+      if (prev.direction === 'asc') return { key, direction: 'desc' };
+      if (prev.direction === 'desc') return { key, direction: 'none' };
+      return { key, direction: 'asc' };
+    });
+  }
 }
 
-function buildVisiblePages(currentPage: number, totalPages: number): number[] {
-  const startPage = Math.max(1, currentPage - 2);
-  const endPage = Math.min(totalPages, startPage + 4);
-  const pages: number[] = [];
+type RowAdapter = {
+  id: string;
+  isActive: boolean;
+  searchText: string;
+  sortValue: (key: string) => string | number | boolean;
+  renderCell: (key: string, refs: { prodottiGrezzi: ProdottoGrezzo[]; varieta: Varieta[] }) => string;
+};
 
-  for (let page = startPage; page <= endPage; page += 1) {
-    pages.push(page);
+function getEntityRows(
+  entity: EntityKey,
+  data: {
+    linee: Linea[];
+    prodottiGrezzi: ProdottoGrezzo[];
+    varieta: Varieta[];
+    imballaggiSecondari: ImballaggioSecondario[];
+    articoli: Articolo[];
+    sigleLotto: SiglaLotto[];
+  }
+): RowAdapter[] {
+  if (entity === 'linee') {
+    return data.linee.map((item) => ({
+      id: item.id,
+      isActive: item.isActive,
+      searchText: `${item.nome} ${item.descrizione} ${item.ordine ?? ''}`,
+      sortValue: (key) => (key in item ? (item as unknown as Record<string, unknown>)[key] as string : ''),
+      renderCell: (key) => {
+        if (key === 'nome') return item.nome;
+        if (key === 'descrizione') return item.descrizione || '—';
+        if (key === 'ordine') return item.ordine ? String(item.ordine) : '—';
+        if (key === 'updatedAt') return formatDateTime(item.updatedAt);
+        if (key === 'isActive') return item.isActive ? 'Attiva' : 'Disattivata';
+        return '—';
+      }
+    }));
   }
 
-  return pages;
+  if (entity === 'prodottiGrezzi') {
+    return data.prodottiGrezzi.map((item) => ({
+      id: item.id,
+      isActive: item.isActive,
+      searchText: `${item.nome} ${item.descrizione}`,
+      sortValue: (key) => (key in item ? (item as unknown as Record<string, unknown>)[key] as string : ''),
+      renderCell: (key) => {
+        if (key === 'nome') return item.nome;
+        if (key === 'descrizione') return item.descrizione || '—';
+        if (key === 'updatedAt') return formatDateTime(item.updatedAt);
+        if (key === 'isActive') return item.isActive ? 'Attivo' : 'Disattivato';
+        return '—';
+      }
+    }));
+  }
+
+  if (entity === 'varieta') {
+    return data.varieta.map((item) => ({
+      id: item.id,
+      isActive: item.isActive,
+      searchText: `${item.nome} ${item.descrizione}`,
+      sortValue: (key) => (key in item ? (item as unknown as Record<string, unknown>)[key] as string : ''),
+      renderCell: (key, refs) => {
+        if (key === 'nome') return item.nome;
+        if (key === 'prodottoGrezzoId') return refs.prodottiGrezzi.find((x) => x.id === item.prodottoGrezzoId)?.nome ?? '—';
+        if (key === 'descrizione') return item.descrizione || '—';
+        if (key === 'updatedAt') return formatDateTime(item.updatedAt);
+        if (key === 'isActive') return item.isActive ? 'Attiva' : 'Disattivata';
+        return '—';
+      }
+    }));
+  }
+
+  if (entity === 'imballaggiSecondari') {
+    return data.imballaggiSecondari.map((item) => ({
+      id: item.id,
+      isActive: item.isActive,
+      searchText: `${item.nome} ${item.descrizione}`,
+      sortValue: (key) => (key in item ? (item as unknown as Record<string, unknown>)[key] as string : ''),
+      renderCell: (key) => {
+        if (key === 'nome') return item.nome;
+        if (key === 'taraKg') return item.taraKg ? `${item.taraKg} kg` : '—';
+        if (key === 'dimensioni') {
+          if (!item.lunghezzaCm || !item.larghezzaCm || !item.altezzaCm) return '—';
+          return `${item.lunghezzaCm}x${item.larghezzaCm}x${item.altezzaCm} cm`;
+        }
+        if (key === 'descrizione') return item.descrizione || '—';
+        if (key === 'updatedAt') return formatDateTime(item.updatedAt);
+        if (key === 'isActive') return item.isActive ? 'Attivo' : 'Disattivato';
+        return '—';
+      }
+    }));
+  }
+
+  if (entity === 'articoli') {
+    return data.articoli.map((item) => ({
+      id: item.id,
+      isActive: item.isActive,
+      searchText: `${item.nome} ${item.descrizione}`,
+      sortValue: (key) => (key in item ? (item as unknown as Record<string, unknown>)[key] as string : ''),
+      renderCell: (key, refs) => {
+        if (key === 'nome') return item.nome;
+        if (key === 'pesoPerCollo') return `${item.pesoPerCollo} kg`;
+        if (key === 'pesoVariabile') return item.pesoVariabile ? 'Sì' : 'No';
+        if (key === 'vincoli') {
+          if (!item.vincoloProdottoGrezzoId && !item.vincoloVarietaId) return 'Nessuno';
+          const prodotto = refs.prodottiGrezzi.find((x) => x.id === item.vincoloProdottoGrezzoId)?.nome;
+          const varietaNome = refs.varieta.find((x) => x.id === item.vincoloVarietaId)?.nome;
+          return [prodotto, varietaNome].filter(Boolean).join(' · ');
+        }
+        if (key === 'updatedAt') return formatDateTime(item.updatedAt);
+        if (key === 'isActive') return item.isActive ? 'Attivo' : 'Disattivato';
+        return '—';
+      }
+    }));
+  }
+
+  return data.sigleLotto.map((item) => ({
+    id: item.id,
+    isActive: item.isActive,
+    searchText: `${item.codice} ${item.produttore} ${item.campo}`,
+    sortValue: (key) => (key in item ? (item as unknown as Record<string, unknown>)[key] as string : ''),
+    renderCell: (key, refs) => {
+      if (key === 'codice') return item.codice;
+      if (key === 'produttore') return item.produttore;
+      if (key === 'prodottoGrezzoId') return refs.prodottiGrezzi.find((x) => x.id === item.prodottoGrezzoId)?.nome ?? '—';
+      if (key === 'varietaId') return refs.varieta.find((x) => x.id === item.varietaId)?.nome ?? '—';
+      if (key === 'campo') return item.campo || '—';
+      if (key === 'updatedAt') return formatDateTime(item.updatedAt);
+      if (key === 'isActive') return item.isActive ? 'Attiva' : 'Disattivata';
+      return '—';
+    }
+  }));
 }
 
-function createRecord(
-  name: string,
-  description: string,
-  code: string,
-  producer: string,
-  category: string
-): RegistryRecord {
-  const nowIso = new Date().toISOString();
+function getColumns(entity: EntityKey): { key: string; label: string }[] {
+  if (entity === 'linee') return [
+    { key: 'nome', label: 'Nome' },
+    { key: 'ordine', label: 'Ordine' },
+    { key: 'descrizione', label: 'Descrizione' },
+    { key: 'updatedAt', label: 'Aggiornata il' },
+    { key: 'isActive', label: 'Stato' }
+  ];
 
-  return {
-    id: crypto.randomUUID(),
-    name,
-    description,
-    code,
-    producer,
-    category,
-    isActive: true,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-    deletedAt: null
-  };
+  if (entity === 'prodottiGrezzi') return [
+    { key: 'nome', label: 'Nome' },
+    { key: 'descrizione', label: 'Descrizione' },
+    { key: 'updatedAt', label: 'Aggiornata il' },
+    { key: 'isActive', label: 'Stato' }
+  ];
+
+  if (entity === 'varieta') return [
+    { key: 'nome', label: 'Varietà' },
+    { key: 'prodottoGrezzoId', label: 'Prodotto grezzo' },
+    { key: 'descrizione', label: 'Descrizione' },
+    { key: 'updatedAt', label: 'Aggiornata il' },
+    { key: 'isActive', label: 'Stato' }
+  ];
+
+  if (entity === 'imballaggiSecondari') return [
+    { key: 'nome', label: 'Nome' },
+    { key: 'taraKg', label: 'Tara' },
+    { key: 'dimensioni', label: 'Dimensioni' },
+    { key: 'descrizione', label: 'Descrizione' },
+    { key: 'isActive', label: 'Stato' }
+  ];
+
+  if (entity === 'articoli') return [
+    { key: 'nome', label: 'Nome' },
+    { key: 'pesoPerCollo', label: 'Peso/collo' },
+    { key: 'pesoVariabile', label: 'Peso variabile' },
+    { key: 'vincoli', label: 'Vincoli' },
+    { key: 'isActive', label: 'Stato' }
+  ];
+
+  return [
+    { key: 'codice', label: 'Sigla' },
+    { key: 'produttore', label: 'Produttore' },
+    { key: 'prodottoGrezzoId', label: 'Prodotto grezzo' },
+    { key: 'varietaId', label: 'Varietà' },
+    { key: 'campo', label: 'Campo' },
+    { key: 'isActive', label: 'Stato' }
+  ];
 }
 
-function sortIcon(direction: SortDirection): string {
-  if (direction === 'asc') {
-    return '↑';
-  }
+const ENTITY_MENU: { key: EntityKey; label: string; description: string; ctaLabel: string }[] = [
+  { key: 'linee', label: 'Linee', description: 'Gestione linee di produzione e ordine sul cruscotto.', ctaLabel: 'Nuova linea' },
+  { key: 'prodottiGrezzi', label: 'Prodotti grezzi', description: 'Anagrafica prodotto origine.', ctaLabel: 'Nuovo prodotto grezzo' },
+  { key: 'varieta', label: 'Varietà', description: 'Varietà collegate al prodotto grezzo.', ctaLabel: 'Nuova varietà' },
+  { key: 'imballaggiSecondari', label: 'Imballaggi secondari', description: 'Imballaggi con tara e dimensioni.', ctaLabel: 'Nuovo imballaggio secondario' },
+  { key: 'articoli', label: 'Articoli', description: 'Articoli con regole peso e vincoli lotto.', ctaLabel: 'Nuovo articolo' },
+  { key: 'sigleLotto', label: 'Sigle lotto', description: 'Sigle valide per apertura lavorazioni.', ctaLabel: 'Nuova sigla lotto' }
+];
 
-  if (direction === 'desc') {
-    return '↓';
-  }
+function createBase<T extends Record<string, unknown>>(payload: T): BaseEntity & T {
+  const now = new Date().toISOString();
+  return { id: crypto.randomUUID(), createdAt: now, updatedAt: now, isActive: true, deletedAt: null, ...payload };
+}
 
-  return '↕';
+function toNumberOrNull(value: string): number | null {
+  if (!value.trim()) return null;
+  const n = Number(value);
+  return Number.isNaN(n) ? null : n;
 }
 
 function formatDateTime(value: string): string {
@@ -665,3 +934,174 @@ function formatDateTime(value: string): string {
     minute: '2-digit'
   }).format(new Date(value));
 }
+
+function buildVisiblePages(currentPage: number, totalPages: number): number[] {
+  const start = Math.max(1, currentPage - 2);
+  const end = Math.min(totalPages, start + 4);
+  const pages: number[] = [];
+  for (let i = start; i <= end; i += 1) pages.push(i);
+  return pages;
+}
+
+function sortIcon(direction: SortDirection) {
+  if (direction === 'asc') return '↑';
+  if (direction === 'desc') return '↓';
+  return '↕';
+}
+
+function PagerButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md border border-slate-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {label}
+    </button>
+  );
+}
+
+function renderLineaForm(
+  form: { nome: string; descrizione: string; ordine: string },
+  setForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string; ordine: string }>>
+) {
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      <input value={form.nome} onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} placeholder="Nome linea *" required className={inputClass} />
+      <input value={form.ordine} onChange={(e) => setForm((p) => ({ ...p, ordine: e.target.value }))} placeholder="Ordine dashboard" type="number" className={inputClass} />
+      <input value={form.descrizione} onChange={(e) => setForm((p) => ({ ...p, descrizione: e.target.value }))} placeholder="Descrizione" className={inputClass} />
+    </div>
+  );
+}
+
+function renderProdottoForm(
+  form: { nome: string; descrizione: string },
+  setForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string }>>
+) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <input value={form.nome} onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} placeholder="Nome prodotto grezzo *" required className={inputClass} />
+      <input value={form.descrizione} onChange={(e) => setForm((p) => ({ ...p, descrizione: e.target.value }))} placeholder="Descrizione" className={inputClass} />
+    </div>
+  );
+}
+
+function renderVarietaForm(
+  form: { nome: string; descrizione: string; prodottoGrezzoId: string },
+  setForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string; prodottoGrezzoId: string }>>,
+  prodotti: ProdottoGrezzo[]
+) {
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      <input value={form.nome} onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} placeholder="Nome varietà *" required className={inputClass} />
+      <select value={form.prodottoGrezzoId} onChange={(e) => setForm((p) => ({ ...p, prodottoGrezzoId: e.target.value }))} required className={inputClass}>
+        <option value="">Prodotto grezzo *</option>
+        {prodotti.map((item) => (
+          <option key={item.id} value={item.id}>{item.nome}</option>
+        ))}
+      </select>
+      <input value={form.descrizione} onChange={(e) => setForm((p) => ({ ...p, descrizione: e.target.value }))} placeholder="Descrizione" className={inputClass} />
+    </div>
+  );
+}
+
+function renderImballaggioForm(
+  form: { nome: string; descrizione: string; taraKg: string; lunghezzaCm: string; larghezzaCm: string; altezzaCm: string },
+  setForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string; taraKg: string; lunghezzaCm: string; larghezzaCm: string; altezzaCm: string }>>
+) {
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      <input value={form.nome} onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} placeholder="Nome imballaggio *" required className={inputClass} />
+      <input value={form.taraKg} onChange={(e) => setForm((p) => ({ ...p, taraKg: e.target.value }))} placeholder="Tara kg" type="number" step="0.01" className={inputClass} />
+      <input value={form.descrizione} onChange={(e) => setForm((p) => ({ ...p, descrizione: e.target.value }))} placeholder="Descrizione" className={inputClass} />
+      <input value={form.lunghezzaCm} onChange={(e) => setForm((p) => ({ ...p, lunghezzaCm: e.target.value }))} placeholder="Lunghezza cm" type="number" className={inputClass} />
+      <input value={form.larghezzaCm} onChange={(e) => setForm((p) => ({ ...p, larghezzaCm: e.target.value }))} placeholder="Larghezza cm" type="number" className={inputClass} />
+      <input value={form.altezzaCm} onChange={(e) => setForm((p) => ({ ...p, altezzaCm: e.target.value }))} placeholder="Altezza cm" type="number" className={inputClass} />
+    </div>
+  );
+}
+
+function renderArticoloForm(
+  form: { nome: string; descrizione: string; pesoPerCollo: string; pesoVariabile: boolean; vincoloProdottoGrezzoId: string; vincoloVarietaId: string },
+  setForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string; pesoPerCollo: string; pesoVariabile: boolean; vincoloProdottoGrezzoId: string; vincoloVarietaId: string }>>,
+  prodotti: ProdottoGrezzo[],
+  varietaFiltrate: Varieta[]
+) {
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      <input value={form.nome} onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} placeholder="Nome articolo *" required className={inputClass} />
+      <input value={form.pesoPerCollo} onChange={(e) => setForm((p) => ({ ...p, pesoPerCollo: e.target.value }))} placeholder="Peso per collo (kg) *" required type="number" step="0.01" min="0.01" className={inputClass} />
+      <input value={form.descrizione} onChange={(e) => setForm((p) => ({ ...p, descrizione: e.target.value }))} placeholder="Descrizione" className={inputClass} />
+      <select
+        value={form.vincoloProdottoGrezzoId}
+        onChange={(e) => setForm((p) => ({ ...p, vincoloProdottoGrezzoId: e.target.value, vincoloVarietaId: '' }))}
+        className={inputClass}
+      >
+        <option value="">Vincolo prodotto: nessuno</option>
+        {prodotti.map((item) => (
+          <option key={item.id} value={item.id}>{item.nome}</option>
+        ))}
+      </select>
+      <select value={form.vincoloVarietaId} onChange={(e) => setForm((p) => ({ ...p, vincoloVarietaId: e.target.value }))} className={inputClass}>
+        <option value="">Vincolo varietà: nessuno</option>
+        {varietaFiltrate.map((item) => (
+          <option key={item.id} value={item.id}>{item.nome}</option>
+        ))}
+      </select>
+      <label className="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm text-secondary">
+        <input
+          checked={form.pesoVariabile}
+          onChange={(e) => setForm((p) => ({ ...p, pesoVariabile: e.target.checked }))}
+          type="checkbox"
+        />
+        Peso variabile
+      </label>
+    </div>
+  );
+}
+
+function renderSiglaForm(
+  form: { codice: string; produttore: string; prodottoGrezzoId: string; varietaId: string; campo: string },
+  setForm: React.Dispatch<React.SetStateAction<{ codice: string; produttore: string; prodottoGrezzoId: string; varietaId: string; campo: string }>>,
+  prodotti: ProdottoGrezzo[],
+  varietaFiltrate: Varieta[]
+) {
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      <input value={form.codice} onChange={(e) => setForm((p) => ({ ...p, codice: e.target.value }))} placeholder="Sigla lotto (es. 2012) *" required className={inputClass} />
+      <input value={form.produttore} onChange={(e) => setForm((p) => ({ ...p, produttore: e.target.value }))} placeholder="Produttore *" required className={inputClass} />
+      <input value={form.campo} onChange={(e) => setForm((p) => ({ ...p, campo: e.target.value }))} placeholder="Campo/appezzamento" className={inputClass} />
+      <select value={form.prodottoGrezzoId} onChange={(e) => setForm((p) => ({ ...p, prodottoGrezzoId: e.target.value, varietaId: '' }))} required className={inputClass}>
+        <option value="">Prodotto grezzo *</option>
+        {prodotti.map((item) => (
+          <option key={item.id} value={item.id}>{item.nome}</option>
+        ))}
+      </select>
+      <select value={form.varietaId} onChange={(e) => setForm((p) => ({ ...p, varietaId: e.target.value }))} required className={inputClass}>
+        <option value="">Varietà *</option>
+        {varietaFiltrate.map((item) => (
+          <option key={item.id} value={item.id}>{item.nome}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function resetEntityForms(actions: {
+  setLineaForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string; ordine: string }>>;
+  setProdottoForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string }>>;
+  setVarietaForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string; prodottoGrezzoId: string }>>;
+  setImballaggioForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string; taraKg: string; lunghezzaCm: string; larghezzaCm: string; altezzaCm: string }>>;
+  setArticoloForm: React.Dispatch<React.SetStateAction<{ nome: string; descrizione: string; pesoPerCollo: string; pesoVariabile: boolean; vincoloProdottoGrezzoId: string; vincoloVarietaId: string }>>;
+  setSiglaForm: React.Dispatch<React.SetStateAction<{ codice: string; produttore: string; prodottoGrezzoId: string; varietaId: string; campo: string }>>;
+}) {
+  actions.setLineaForm({ nome: '', descrizione: '', ordine: '' });
+  actions.setProdottoForm({ nome: '', descrizione: '' });
+  actions.setVarietaForm({ nome: '', descrizione: '', prodottoGrezzoId: '' });
+  actions.setImballaggioForm({ nome: '', descrizione: '', taraKg: '', lunghezzaCm: '', larghezzaCm: '', altezzaCm: '' });
+  actions.setArticoloForm({ nome: '', descrizione: '', pesoPerCollo: '', pesoVariabile: false, vincoloProdottoGrezzoId: '', vincoloVarietaId: '' });
+  actions.setSiglaForm({ codice: '', produttore: '', prodottoGrezzoId: '', varietaId: '', campo: '' });
+}
+
+const inputClass = 'rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary';
