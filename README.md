@@ -69,7 +69,7 @@ Quando un agente contribuisce a questo repository, deve rispettare queste regole
 
 ## Stato repository
 
-Il repository contiene documentazione e skeleton iniziale. L’implementazione applicativa deve seguire i vincoli descritti nei documenti in `docs/` e mantenere `README.md` + `docs/TODO.md` sincronizzati con l’avanzamento del progetto.
+Il repository contiene documentazione + una prima base implementativa Next.js. La sezione Anagrafiche dispone ora di una UI gestionale iniziale (filtri avanzati, ordinamento tri-stato, multipaging) attualmente alimentata da dati mock; l’implementazione applicativa deve continuare a seguire i vincoli descritti nei documenti in `docs/` e mantenere `README.md` + `docs/TODO.md` sincronizzati con l’avanzamento del progetto.
 
 ## Guida passo passo per il deploy
 

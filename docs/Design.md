@@ -110,6 +110,18 @@ Tutti i componenti sono da shadcn/ui. Nessun CSS custom — solo Tailwind.
 
 ---
 
+## Vista Anagrafiche (Admin)
+
+La pagina `Anagrafiche` usa layout gestionale con:
+- selettore entità (Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto);
+- area filtri avanzati combinabili (ricerca full-text, stato, dominio, creato da, reset);
+- tabella con header ordinabili a 3 stati (`↕`, `↑`, `↓`) e badge stato attivo/disattivato;
+- multipaging con scelta righe/pagina e controlli `Prima/Prec/Pagine/Succ/Ultima`.
+
+Stile coerente con i token definiti (surface/background/primary/secondary) e con componenti a bassa complessità visuale orientati all’uso gestionale quotidiano.
+
+---
+
 ## Layout Globale
 
 ```

@@ -10,6 +10,14 @@
 - [ ] Gestire ruoli `admin`, `operatore`, `viewer` lato UI e lato query.
 - [ ] Proteggere route sensibili (es. anagrafiche admin-only).
 
+## Anagrafiche (Admin)
+- [x] Implementare pagina `/anagrafiche` con vista gestionale moderna e navigazione per entità (Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto).
+- [x] Aggiungere filtri avanzati combinabili (ricerca testuale, stato, dominio, creato da) con reset rapido.
+- [x] Implementare ordinamento tri-stato sugli header tabella (`asc` → `desc` → neutro).
+- [x] Implementare multipaging (selezione righe/pagina + navigazione prima/prec/pagine/succ/ultima).
+- [ ] Collegare la vista a dati reali Supabase (rimozione dataset mock locale).
+- [ ] Aggiungere operazioni CRUD complete con soft delete/restore e tracciamento `audit_log`.
+
 ## Cruscotto
 - [ ] Collegare summary bar a metriche realtime.
 - [ ] Implementare card linea inattiva/attiva/multi-lavorazione da dataset reale.
