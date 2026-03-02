@@ -2,37 +2,32 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 
+import type {
+  Articolo as DomainArticolo,
+  ImballaggioSecondario as DomainImballaggioSecondario,
+  Linea as DomainLinea,
+  ProdottoGrezzo as DomainProdottoGrezzo,
+  SiglaLotto as DomainSiglaLotto,
+  Varieta as DomainVarieta
+} from '@/types/domain';
+
 type EntityKey = 'linee' | 'prodottiGrezzi' | 'varieta' | 'imballaggiSecondari' | 'articoli' | 'sigleLotto';
 
-type Linea = { id: string; nome: string; descrizione: string; ordine: number | null };
-type ProdottoGrezzo = { id: string; nome: string; descrizione: string };
-type Varieta = { id: string; nome: string; descrizione: string; prodottoGrezzoId: string };
-type ImballaggioSecondario = {
-  id: string;
-  nome: string;
-  descrizione: string;
-  taraKg: number | null;
-  lunghezzaCm: number | null;
-  larghezzaCm: number | null;
-  altezzaCm: number | null;
-};
-type Articolo = {
-  id: string;
-  nome: string;
-  descrizione: string;
-  pesoPerCollo: number;
-  pesoVariabile: boolean;
-  vincoloProdottoGrezzoId: string | null;
-  vincoloVarietaId: string | null;
-};
-type SiglaLotto = {
-  id: string;
-  codice: string;
-  produttore: string;
-  prodottoGrezzoId: string;
-  varietaId: string;
-  campo: string;
-};
+type Linea = Omit<Pick<DomainLinea, 'id' | 'nome' | 'descrizione' | 'ordine'>, 'descrizione'> & { descrizione: string };
+type ProdottoGrezzo = Omit<Pick<DomainProdottoGrezzo, 'id' | 'nome' | 'descrizione'>, 'descrizione'> & { descrizione: string };
+type Varieta = Omit<Pick<DomainVarieta, 'id' | 'nome' | 'descrizione' | 'prodottoGrezzoId'>, 'descrizione'> & { descrizione: string };
+type ImballaggioSecondario = Omit<
+  Pick<DomainImballaggioSecondario, 'id' | 'nome' | 'descrizione' | 'taraKg' | 'lunghezzaCm' | 'larghezzaCm' | 'altezzaCm'>,
+  'descrizione'
+> & { descrizione: string };
+type Articolo = Omit<
+  Pick<DomainArticolo, 'id' | 'nome' | 'descrizione' | 'pesoPerCollo' | 'pesoVariabile' | 'vincoloProdottoGrezzoId' | 'vincoloVarietaId'>,
+  'descrizione'
+> & { descrizione: string };
+type SiglaLotto = Omit<
+  Pick<DomainSiglaLotto, 'id' | 'codice' | 'produttore' | 'prodottoGrezzoId' | 'varietaId' | 'campo'>,
+  'campo'
+> & { campo: string };
 
 type SortDirection = 'none' | 'asc' | 'desc';
 
