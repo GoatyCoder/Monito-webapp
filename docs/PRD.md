@@ -18,7 +18,7 @@ Il sistema fornisce un cruscotto in tempo reale sullo stato delle linee di produ
 ### v1
 - Fornire visibilità in tempo reale sullo stato di tutte le linee attive durante il turno
 - Registrare lavorazioni, pedane e scarti in modo strutturato e tracciabile
-- Garantire la tracciabilità completa del prodotto per lotto ingresso (standard GS1, Reg. CE 178/2002)
+- Garantire la tracciabilità completa del prodotto tramite sigla lotto + data ingresso (DOY derivabile) (standard GS1, Reg. CE 178/2002)
 - Calcolare automaticamente le percentuali di scarto per lotto
 - Produrre report gestionali esportabili (PDF, Excel, CSV) per linea, lotto e articolo
 - Mantenere un audit log completo e immutabile su tutte le operazioni
@@ -82,7 +82,7 @@ Un Operatore può gestire più linee da una singola postazione. Più Operatori p
 - Viewer: sola lettura, pulsanti azione nascosti
 
 ### Gestione Lavorazioni
-- **Apertura:** linea + lotto ingresso + articolo (filtrato per vincoli) + imballaggio secondario. Timestamp automatico.
+- **Apertura:** linea + sigla lotto + data ingresso (oppure DOY con conversione automatica in data) + articolo (filtrato per vincoli) + imballaggio secondario. Timestamp automatico.
 - **Chiusura:** manuale dall'Operatore. Timestamp automatico.
 - **Riapertura:** permessa a Operatore e Admin. Tracciata in audit log con motivo opzionale. Le pedane post-riapertura si aggiungono alle esistenti.
 - **Modifica:** correzione lotto o articolo su lavorazione aperta. Le pedane già registrate restano associate all'articolo originale. Audit log obbligatorio.
@@ -95,7 +95,7 @@ Un Operatore può gestire più linee da una singola postazione. Più Operatori p
 
 ### Registrazione Scarti
 - Accessibile sempre dal FAB
-- Lotto ingresso + colli (opzionale) + peso kg (opzionale). Almeno un campo obbligatorio.
+- Sigla lotto + data ingresso + colli (opzionale) + peso kg (opzionale). Almeno un campo obbligatorio.
 - Più registrazioni sullo stesso lotto vengono sommate
 - Percentuale scarto ricalcolata e mostrata in anteprima prima del salvataggio
 
@@ -103,11 +103,11 @@ Un Operatore può gestire più linee da una singola postazione. Più Operatori p
 Stampata via `react-to-print`. Contenuto: Prodotto Grezzo, Varietà, Articolo, Colli, Peso, Lotto ingresso, Data confezionamento, `codice_pedana` (in grande).
 
 ### Anagrafiche (Admin)
-Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto, Lotti Ingresso. Nessuna cancellazione fisica — soft delete con `is_active` (`false` = disattivato), tracciato con `deleted_at` e `deleted_by`. Vedi schema completo in `SCHEMA.md`.
+Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto. Nessuna cancellazione fisica — soft delete con `is_active` (`false` = disattivato), tracciato con `deleted_at` e `deleted_by`. Vedi schema completo in `SCHEMA.md`.
 
 ### Report
 Filtro per data o intervallo. Export PDF, Excel, CSV.
-- **Per Lotto Ingresso:** pedane, colli, peso totale, scarto (kg/colli/%), linee coinvolte, articoli prodotti
+- **Per Lotto (sigla + data ingresso):** pedane, colli, peso totale, scarto (kg/colli/%), linee coinvolte, articoli prodotti
 - **Per Linea:** lavorazioni del giorno, lotti lavorati, pedane/colli/peso, tempo attivo (somma `chiusa_at - aperta_at` delle lavorazioni chiuse)
 - **Per Articolo:** colli e pedane totali aggregati
 
@@ -127,7 +127,7 @@ Filtro per data o intervallo. Export PDF, Excel, CSV.
 | Peso variabile non modificato | Registra il peso stimato. Nessun avviso. |
 | Peso variabile modificato | Registra il peso inserito. Avviso visivo "⚠ Peso inserito manualmente". Non bloccante. |
 | Pedana con peso zero | Bloccata. Il sistema non permette la registrazione. |
-| Scarto senza lavorazioni aperte | Permesso. L'Operatore seleziona qualsiasi lotto ingresso esistente. |
+| Scarto senza lavorazioni aperte | Permesso. L'Operatore inserisce sigla lotto + data ingresso. |
 | Reset totali cruscotto | Totali barra riepilogo riferiti al giorno corrente (dalla mezzanotte). |
 | Lavorazione aperta il giorno precedente | Resta visibile nel cruscotto fino a chiusura manuale. Attribuita alla data di apertura nei report. |
 | Cancellazione record | Nessun record cancellato fisicamente. Anagrafiche disattivabili via soft delete (`is_active`, `deleted_at`, `deleted_by`). Dati produttivi modificabili solo con traccia audit. |
@@ -174,13 +174,13 @@ Copre tutte le tabelle: anagrafiche, lavorazioni, pedane, scarti. Ogni INSERT, U
 | **Prodotto Grezzo** | Categoria merceologica della materia prima (es. Uva da Tavola). Contiene le varietà. |
 | **Varietà** | Cultivar specifica (es. Crimson, Italia, Victoria). Sempre legata a un prodotto grezzo. |
 | **Sigla Lotto** | Codice partita: produttore + prodotto grezzo + varietà + campo (es. "2012"). |
-| **Lotto Ingresso** | Conferimento fisico: sigla + DOY (es. "2012-012"). Unità di tracciabilità operativa. |
+| **Lotto Ingresso** | Identificatore operativo derivato da sigla lotto + data ingresso (DOY calcolabile). |
 | **DOY** | Day of Year — numero progressivo del giorno nell'anno (es. 012 = 12 gennaio). |
 | **Articolo / Lavorato** | Prodotto confezionato finito. Può avere vincoli su prodotto grezzo e/o varietà. |
-| **Lavorazione** | Sessione operativa: linea + lotto ingresso + articolo + imballaggio secondario. |
+| **Lavorazione** | Sessione operativa: linea + sigla lotto + data ingresso + articolo + imballaggio secondario. |
 | **Pedana** | Unità di spedizione: colli omogenei dello stesso articolo, registrata come evento al completamento. |
 | **codice_pedana** | ID leggibile stampato sull'etichetta. Formato `PYY-DOY-NNNN` (es. `P26-051-0042`). |
-| **Scarto** | Materiale non idoneo, registrato in colli e/o kg a livello di lotto ingresso. |
+| **Scarto** | Materiale non idoneo, registrato in colli e/o kg a livello di sigla lotto + data ingresso. |
 | **Bins** | Contenitore grande per prodotto sfuso o scarto (~250–300 kg). |
 | **GS1** | Standard internazionali per identificazione prodotti e tracciabilità supply chain. |
 | **Audit Log** | Registro immutabile di tutte le operazioni: chi, cosa, quando, valore precedente e nuovo. |

@@ -116,46 +116,10 @@ varieta_id          uuid NOT NULL REFERENCES varieta(id)
 campo               text                  -- identificativo campo/appezzamento
 ```
 
-### `lotti_ingresso`
-```sql
-id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at      timestamptz DEFAULT now()
-created_by      uuid NOT NULL REFERENCES auth.users(id)
-updated_at      timestamptz
-updated_by      uuid REFERENCES auth.users(id)
-codice          text NOT NULL UNIQUE   -- formato SIGLA-DOY, es. "2012-012". Generato automaticamente.
-sigla_lotto_id  uuid NOT NULL REFERENCES sigle_lotto(id)
-data_ingresso   date NOT NULL
-doy             integer NOT NULL       -- Day of Year, calcolato automaticamente da trigger
-```
+### `lotti_ingresso` (deprecata in UI v1)
 
-**Funzione DOY:**
-```sql
-CREATE OR REPLACE FUNCTION get_doy(d date) RETURNS integer AS $$
-  SELECT EXTRACT(DOY FROM d)::integer;
-$$ LANGUAGE sql IMMUTABLE;
-```
-
-**Trigger generazione `codice` e `doy`:**
-```sql
-CREATE OR REPLACE FUNCTION generate_lotto_ingresso_codice()
-RETURNS TRIGGER AS $$
-DECLARE
-  sigla text;
-  doy_val integer;
-BEGIN
-  SELECT codice INTO sigla FROM sigle_lotto WHERE id = NEW.sigla_lotto_id;
-  doy_val := get_doy(NEW.data_ingresso);
-  NEW.doy := doy_val;
-  NEW.codice := sigla || '-' || LPAD(doy_val::text, 3, '0');
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_lotto_ingresso_codice
-BEFORE INSERT ON lotti_ingresso
-FOR EACH ROW EXECUTE FUNCTION generate_lotto_ingresso_codice();
-```
+> Nota: la UI v1 non espone più una anagrafica dedicata `lotti_ingresso`.
+> Il lotto operativo viene identificato da `sigla_lotto` + `data_ingresso` dentro `lavorazioni`; il DOY è sempre derivabile dalla data.
 
 ### `lavorazioni`
 ```sql
@@ -165,7 +129,8 @@ created_by                uuid NOT NULL REFERENCES auth.users(id)
 updated_at                timestamptz
 updated_by                uuid REFERENCES auth.users(id)
 linea_id                  uuid NOT NULL REFERENCES linee(id)
-lotto_ingresso_id         uuid NOT NULL REFERENCES lotti_ingresso(id)
+sigla_lotto               text NOT NULL            -- inserita in apertura lavorazione
+data_ingresso             date NOT NULL            -- inserita in apertura lavorazione
 articolo_id               uuid NOT NULL REFERENCES articoli(id)
 imballaggio_secondario_id uuid NOT NULL REFERENCES imballaggi_secondari(id)
 stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta'
@@ -238,14 +203,15 @@ created_at        timestamptz DEFAULT now()
 created_by        uuid NOT NULL REFERENCES auth.users(id)
 updated_at        timestamptz
 updated_by        uuid REFERENCES auth.users(id)
-lotto_ingresso_id uuid NOT NULL REFERENCES lotti_ingresso(id)
+sigla_lotto       text NOT NULL
+data_ingresso     date NOT NULL
 colli             integer      -- numero contenitori scartati. Almeno uno tra colli e peso_kg obbligatorio.
 peso_kg           numeric      -- peso totale scarto in kg. Almeno uno tra colli e peso_kg obbligatorio.
 registrato_at     timestamptz NOT NULL DEFAULT now()
 registrato_da     uuid NOT NULL REFERENCES auth.users(id)
 ```
 
-**Formula % scarto per lotto ingresso:**
+**Formula % scarto per lotto (sigla + data ingresso):**
 ```sql
 SELECT
   SUM(s.peso_kg) AS scarto_kg,
@@ -254,12 +220,13 @@ SELECT
     SUM(s.peso_kg) / NULLIF(SUM(p.peso_totale) + SUM(s.peso_kg), 0) * 100,
     2
   ) AS percentuale_scarto
-FROM lotti_ingresso li
-LEFT JOIN lavorazioni lav ON lav.lotto_ingresso_id = li.id
+FROM lavorazioni lav
 LEFT JOIN pedane p ON p.lavorazione_id = lav.id
-LEFT JOIN scarti s ON s.lotto_ingresso_id = li.id
-WHERE li.id = '<lotto_id>'
-GROUP BY li.id;
+LEFT JOIN scarti s ON s.sigla_lotto = lav.sigla_lotto
+                  AND s.data_ingresso = lav.data_ingresso
+WHERE lav.sigla_lotto = '<sigla_lotto>'
+  AND lav.data_ingresso = '<data_ingresso>'
+GROUP BY lav.sigla_lotto, lav.data_ingresso;
 ```
 
 I campi `colli` e `peso_kg` sono indipendenti — nessun calcolo automatico tra i due.
@@ -305,7 +272,7 @@ articoli
 
 lavorazioni
   ├── linea_id → linee
-  ├── lotto_ingresso_id → lotti_ingresso
+  ├── sigla_lotto + data_ingresso (identificatore lotto operativo)
   ├── articolo_id → articoli
   └── imballaggio_secondario_id → imballaggi_secondari
 ```
@@ -329,7 +296,7 @@ CREATE INDEX idx_pedane_lavorazione ON pedane(lavorazione_id);
 CREATE INDEX idx_pedane_data ON pedane(DATE(registrata_at));
 
 -- Scarti per lotto
-CREATE INDEX idx_scarti_lotto ON scarti(lotto_ingresso_id);
+CREATE INDEX idx_scarti_lotto ON scarti(sigla_lotto, data_ingresso);
 
 -- Audit log per record e attore
 CREATE INDEX idx_audit_log_record ON audit_log(table_name, record_id);
