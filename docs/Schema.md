@@ -129,7 +129,7 @@ created_by                uuid NOT NULL REFERENCES auth.users(id)
 updated_at                timestamptz
 updated_by                uuid REFERENCES auth.users(id)
 linea_id                  uuid NOT NULL REFERENCES linee(id)
-sigla_lotto               text NOT NULL            -- inserita in apertura lavorazione
+sigla_lotto               text NOT NULL REFERENCES sigle_lotto(codice) -- sigla valida da anagrafica
 data_ingresso             date NOT NULL            -- inserita in apertura lavorazione
 articolo_id               uuid NOT NULL REFERENCES articoli(id)
 imballaggio_secondario_id uuid NOT NULL REFERENCES imballaggi_secondari(id)
@@ -203,7 +203,7 @@ created_at        timestamptz DEFAULT now()
 created_by        uuid NOT NULL REFERENCES auth.users(id)
 updated_at        timestamptz
 updated_by        uuid REFERENCES auth.users(id)
-sigla_lotto       text NOT NULL
+sigla_lotto       text NOT NULL REFERENCES sigle_lotto(codice)
 data_ingresso     date NOT NULL
 colli             integer      -- numero contenitori scartati. Almeno uno tra colli e peso_kg obbligatorio.
 peso_kg           numeric      -- peso totale scarto in kg. Almeno uno tra colli e peso_kg obbligatorio.
@@ -213,20 +213,30 @@ registrato_da     uuid NOT NULL REFERENCES auth.users(id)
 
 **Formula % scarto per lotto (sigla + data ingresso):**
 ```sql
+WITH prodotto AS (
+  SELECT
+    COALESCE(SUM(p.peso_totale), 0) AS prodotto_kg
+  FROM lavorazioni lav
+  LEFT JOIN pedane p ON p.lavorazione_id = lav.id
+  WHERE lav.sigla_lotto = '<sigla_lotto>'
+    AND lav.data_ingresso = '<data_ingresso>'
+),
+scarto AS (
+  SELECT
+    COALESCE(SUM(s.peso_kg), 0) AS scarto_kg
+  FROM scarti s
+  WHERE s.sigla_lotto = '<sigla_lotto>'
+    AND s.data_ingresso = '<data_ingresso>'
+)
 SELECT
-  SUM(s.peso_kg) AS scarto_kg,
-  SUM(p.peso_totale) AS prodotto_kg,
+  scarto.scarto_kg,
+  prodotto.prodotto_kg,
   ROUND(
-    SUM(s.peso_kg) / NULLIF(SUM(p.peso_totale) + SUM(s.peso_kg), 0) * 100,
+    scarto.scarto_kg / NULLIF(prodotto.prodotto_kg + scarto.scarto_kg, 0) * 100,
     2
   ) AS percentuale_scarto
-FROM lavorazioni lav
-LEFT JOIN pedane p ON p.lavorazione_id = lav.id
-LEFT JOIN scarti s ON s.sigla_lotto = lav.sigla_lotto
-                  AND s.data_ingresso = lav.data_ingresso
-WHERE lav.sigla_lotto = '<sigla_lotto>'
-  AND lav.data_ingresso = '<data_ingresso>'
-GROUP BY lav.sigla_lotto, lav.data_ingresso;
+FROM prodotto
+CROSS JOIN scarto;
 ```
 
 I campi `colli` e `peso_kg` sono indipendenti — nessun calcolo automatico tra i due.
@@ -285,6 +295,7 @@ lavorazioni
 CREATE INDEX idx_lavorazioni_linea ON lavorazioni(linea_id);
 CREATE INDEX idx_lavorazioni_stato ON lavorazioni(stato);
 CREATE INDEX idx_lavorazioni_aperta_at ON lavorazioni(aperta_at);
+CREATE INDEX idx_lavorazioni_lotto ON lavorazioni(sigla_lotto, data_ingresso);
 
 -- Pedane per lavorazione e per giorno
 CREATE INDEX idx_pedane_lavorazione ON pedane(lavorazione_id);
