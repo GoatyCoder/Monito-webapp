@@ -4,17 +4,18 @@ import { ChangeEvent, useMemo, useState } from 'react';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
-function formatDateInput(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
 function dayOfYearFromDate(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
+  const [year, month, day] = dateString.split('-').map(Number);
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
   if (Number.isNaN(date.getTime())) {
     return null;
   }
 
-  const yearStart = new Date(date.getFullYear(), 0, 1);
+  const yearStart = new Date(Date.UTC(year, 0, 1));
   const diff = date.getTime() - yearStart.getTime();
 
   return Math.floor(diff / DAY_MS) + 1;
@@ -25,17 +26,15 @@ function dateFromDayOfYear(dayOfYear: number, year: number) {
     return null;
   }
 
-  const date = new Date(year, 0, dayOfYear);
-  if (date.getFullYear() !== year) {
+  const date = new Date(Date.UTC(year, 0, dayOfYear));
+  if (date.getUTCFullYear() !== year) {
     return null;
   }
 
-  return formatDateInput(date);
+  return date.toISOString().slice(0, 10);
 }
 
 export function NewWorkOrderForm() {
-  const currentYear = new Date().getFullYear();
-
   const [siglaLotto, setSiglaLotto] = useState('');
   const [dataIngresso, setDataIngresso] = useState('');
   const [lottoIngressoDoy, setLottoIngressoDoy] = useState('');
@@ -45,8 +44,9 @@ export function NewWorkOrderForm() {
       return 'Inserisci una data o un DOY: il secondo campo viene compilato automaticamente.';
     }
 
-    return `Anno di conversione: ${currentYear}`;
-  }, [currentYear, dataIngresso, lottoIngressoDoy]);
+    const year = new Date().getFullYear();
+    return `Anno di conversione: ${year}`;
+  }, [dataIngresso, lottoIngressoDoy]);
 
   const handleDataIngressoChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextDate = event.target.value;
@@ -70,12 +70,13 @@ export function NewWorkOrderForm() {
       return;
     }
 
-    const date = dateFromDayOfYear(Number(rawValue), currentYear);
+    const year = new Date().getFullYear();
+    const date = dateFromDayOfYear(Number(rawValue), year);
     setDataIngresso(date ?? '');
   };
 
   return (
-    <article className="rounded-lg border border-secondary bg-surface p-4 shadow-sm">
+    <form className="rounded-lg border border-secondary bg-surface p-4 shadow-sm">
       <header className="mb-4">
         <h2 className="text-lg font-semibold">Nuova lavorazione</h2>
         <p className="text-sm text-secondary">Workflow semplificato: sigla lotto + data ingresso/DOY.</p>
@@ -116,6 +117,6 @@ export function NewWorkOrderForm() {
       </div>
 
       <p className="mt-3 text-xs text-secondary">{helperText}</p>
-    </article>
+    </form>
   );
 }

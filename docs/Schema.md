@@ -261,10 +261,9 @@ reason          text                 -- motivazione opzionale inserita dall'uten
 prodotti_grezzi
   └── varieta (N:1)
         └── sigle_lotto (N:1 prodotto_grezzo + varieta)
-              └── lotti_ingresso (N:1)
-                    └── lavorazioni (N:1)
-                          └── pedane (N:1)
-                    └── scarti (N:1)
+              ├── lavorazioni (N:1, via sigla_lotto + data_ingresso)
+              │     └── pedane (N:1)
+              └── scarti (N:1, via sigla_lotto + data_ingresso)
 
 articoli
   ├── vincolo_prodotto_grezzo_id → prodotti_grezzi (nullable)
@@ -286,10 +285,6 @@ lavorazioni
 CREATE INDEX idx_lavorazioni_linea ON lavorazioni(linea_id);
 CREATE INDEX idx_lavorazioni_stato ON lavorazioni(stato);
 CREATE INDEX idx_lavorazioni_aperta_at ON lavorazioni(aperta_at);
-
--- Ricerca lotti
-CREATE INDEX idx_lotti_ingresso_codice ON lotti_ingresso(codice);
-CREATE INDEX idx_lotti_ingresso_data ON lotti_ingresso(data_ingresso);
 
 -- Pedane per lavorazione e per giorno
 CREATE INDEX idx_pedane_lavorazione ON pedane(lavorazione_id);
@@ -315,7 +310,6 @@ ALTER TABLE articoli ENABLE ROW LEVEL SECURITY;
 ALTER TABLE imballaggi_secondari ENABLE ROW LEVEL SECURITY;
 ALTER TABLE linee ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sigle_lotto ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lotti_ingresso ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lavorazioni ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pedane ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scarti ENABLE ROW LEVEL SECURITY;
@@ -336,11 +330,6 @@ CREATE POLICY "anagrafiche_write" ON prodotti_grezzi
   FOR ALL TO authenticated USING (auth_role() = 'admin');
 -- (stessa logica per varieta, articoli, imballaggi_secondari, linee, sigle_lotto)
 
--- Lotti ingresso: tutti leggono, solo Admin inserisce
-CREATE POLICY "lotti_ingresso_select" ON lotti_ingresso
-  FOR SELECT TO authenticated USING (true);
-CREATE POLICY "lotti_ingresso_insert" ON lotti_ingresso
-  FOR INSERT TO authenticated WITH CHECK (auth_role() = 'admin');
 
 -- Lavorazioni, pedane, scarti: Admin e Operatore CRUD, Viewer solo lettura
 CREATE POLICY "produttivo_select" ON lavorazioni
