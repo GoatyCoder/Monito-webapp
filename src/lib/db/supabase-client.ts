@@ -1,15 +1,8 @@
-/*
-  Client Supabase placeholder.
-  TODO:
-  - Installare @supabase/supabase-js
-  - Inizializzare client singleton lato browser/server
-  - Gestire error handling centralizzato e typing query
-*/
+import { createBrowserClient } from '@supabase/ssr';
 
-export type SupabaseClientPlaceholder = {
-  status: 'not-initialized';
-};
-
-export const supabaseClient: SupabaseClientPlaceholder = {
-  status: 'not-initialized'
-};
+export function createSupabaseClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}

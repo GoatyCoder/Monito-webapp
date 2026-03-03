@@ -1,8 +1,3 @@
-/*
-  Tipi dominio minimi (placeholder) coerenti con docs/Schema.md.
-  Nessuna logica applicativa in questa fase.
-*/
-
 export type UserRole = 'admin' | 'operatore' | 'viewer';
 
 export type EntityAuditFields = {
@@ -18,6 +13,7 @@ export type SoftDeletable = {
   deletedBy: string | null;
 };
 
+// registry
 export type ProdottoGrezzo = EntityAuditFields &
   SoftDeletable & {
     id: string;
@@ -55,13 +51,13 @@ export type ImballaggioSecondario = EntityAuditFields &
     altezzaCm: number | null;
   };
 
-export type Linea = EntityAuditFields & {
-  id: string;
-  nome: string;
-  descrizione: string | null;
-  isActive: boolean;
-  ordine: number | null;
-};
+export type Linea = EntityAuditFields &
+  SoftDeletable & {
+    id: string;
+    nome: string;
+    descrizione: string | null;
+    ordine: number | null;
+  };
 
 export type SiglaLotto = EntityAuditFields & {
   id: string;
@@ -72,6 +68,7 @@ export type SiglaLotto = EntityAuditFields & {
   campo: string | null;
 };
 
+// ops_YYYY
 export type Lavorazione = EntityAuditFields & {
   id: string;
   lineaId: string;
@@ -91,6 +88,7 @@ export type Pedana = EntityAuditFields & {
   lavorazioneId: string;
   numeroColli: number;
   pesoTotale: number;
+  registrataDa: string;
 };
 
 export type Scarto = EntityAuditFields & {
@@ -99,16 +97,26 @@ export type Scarto = EntityAuditFields & {
   dataIngresso: string;
   colli: number | null;
   pesoKg: number | null;
+  registratoDa: string;
 };
 
+// audit
 export type AuditLog = {
   id: string;
   eventAt: string;
   actorId: string;
   actorName: string;
+  schemaName: string;
   tableName: string;
   recordId: string;
-  action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'open' | 'close' | 'reopen';
+  action:
+    | 'insert'
+    | 'update'
+    | 'soft_delete'
+    | 'restore'
+    | 'open'
+    | 'close'
+    | 'reopen';
   fieldName: string | null;
   oldValue: unknown;
   newValue: unknown;
