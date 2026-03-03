@@ -36,7 +36,7 @@ deleted_at timestamptz
 deleted_by uuid REFERENCES auth.users(id)
 ```
 
-**Soft delete cascata:** il soft delete non propaga automaticamente ai record figli. Per disattivazioni a cascata va implementata una logica applicativa esplicita.
+**Soft delete cascata:** il soft delete non è una funzionalità nativa del DB. In Monito viene applicato via logica applicativa con propagazione sulle anagrafiche collegate (es. `prodotti_grezzi` → `varieta`, `sigle_lotto`, `articoli` vincolati; `varieta` → `sigle_lotto`, `articoli` vincolati).
 
 ---
 

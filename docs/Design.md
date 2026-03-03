@@ -407,6 +407,7 @@ Layout gestionale composto da:
 - Header sezione con titolo tab attiva, descrizione e CTA primaria `+ Nuovo record`
 - Tabella con colonne ordinabili (click su header, stato visualizzato con freccia `↑` / `↓`)
 - Colonna azioni con `Modifica`, `Disattiva/Ripristina` e `Elimina definitiva`
+- La disattivazione (`Disattiva`) propaga la disattivazione alle anagrafiche figlie correlate (cascata applicativa)
 - Footer tabella con paginazione (`Precedente`, `Successiva`) e contatore record
 
 ### Modali Anagrafiche

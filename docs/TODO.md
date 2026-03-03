@@ -197,6 +197,7 @@
 - [x] CRUD linee con campo `ordine`
 - [x] CRUD sigle lotto
 - [x] Soft delete su tutte le anagrafiche
+- [x] Soft delete cascata sulle anagrafiche collegate
 - [x] Hard delete su tutte le anagrafiche (solo Admin) con dialog di conferma
 - [x] Refactor query anagrafiche: CRUD e fetch centralizzate in `src/lib/db/registry-queries.ts`
 - [x] Refactor UI anagrafiche: organizzazione in tab per entità

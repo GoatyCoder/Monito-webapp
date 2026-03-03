@@ -124,6 +124,11 @@ type TableColumn = {
   render: (row: RegistryRecord) => ReactNode;
 };
 
+type CascadeTarget = {
+  table: RegistryTable;
+  row: RegistryRecord;
+};
+
 const TAB_CONFIG: { key: RegistryTable; label: string; description: string }[] = [
   { key: 'prodotti_grezzi', label: 'Prodotti grezzi', description: 'Gestione materie prime di base' },
   { key: 'varieta', label: 'Varietà', description: 'Catalogo varietà collegate ai prodotti grezzi' },
@@ -163,6 +168,57 @@ function getRowsByTable(data: RegistryData, table: RegistryTable): RegistryRecor
     case 'sigle_lotto':
       return data.sigleLotto;
   }
+}
+
+function getSoftDeleteCascadeTargets(data: RegistryData, table: RegistryTable, row: RegistryRecord): CascadeTarget[] {
+  const targetsByKey = new Map<string, CascadeTarget>();
+
+  function addTarget(targetTable: RegistryTable, targetRow: RegistryRecord) {
+    if (!targetRow.is_active) {
+      return;
+    }
+
+    targetsByKey.set(`${targetTable}:${targetRow.id}`, { table: targetTable, row: targetRow });
+  }
+
+  function collectVarietaChildren(varietaId: string) {
+    data.sigleLotto
+      .filter((sigla) => sigla.varieta_id === varietaId)
+      .forEach((sigla) => addTarget('sigle_lotto', sigla));
+
+    data.articoli
+      .filter((articolo) => articolo.vincolo_varieta_id === varietaId)
+      .forEach((articolo) => addTarget('articoli', articolo));
+  }
+
+  switch (table) {
+    case 'prodotti_grezzi': {
+      data.varieta
+        .filter((varieta) => varieta.prodotto_grezzo_id === row.id)
+        .forEach((varieta) => {
+          addTarget('varieta', varieta);
+          collectVarietaChildren(varieta.id);
+        });
+
+      data.sigleLotto
+        .filter((sigla) => sigla.prodotto_grezzo_id === row.id)
+        .forEach((sigla) => addTarget('sigle_lotto', sigla));
+
+      data.articoli
+        .filter((articolo) => articolo.vincolo_prodotto_grezzo_id === row.id)
+        .forEach((articolo) => addTarget('articoli', articolo));
+
+      break;
+    }
+    case 'varieta': {
+      collectVarietaChildren(row.id);
+      break;
+    }
+    default:
+      break;
+  }
+
+  return [...targetsByKey.values()];
 }
 
 function getDefaultSortState(): Record<RegistryTable, SortConfig> {
@@ -655,7 +711,49 @@ export function RegistryManager() {
     });
 
     upsertLocalRow(table, response.data as RegistryRecord);
-    setStatusMessage(shouldRestore ? 'Record ripristinato.' : 'Record disattivato.');
+
+    if (shouldRestore) {
+      setStatusMessage('Record ripristinato.');
+      return;
+    }
+
+    const cascadeTargets = getSoftDeleteCascadeTargets(data, table, row);
+    const cascadeErrors: string[] = [];
+    let cascadedCount = 0;
+
+    for (const target of cascadeTargets) {
+      const currentTarget = await fetchRegistryRowById(supabase, target.table, target.row.id);
+      if (currentTarget.error || !currentTarget.data || currentTarget.data.is_active === false) {
+        if (currentTarget.error) {
+          cascadeErrors.push(`lettura ${target.table} (${target.row.id}): ${currentTarget.error.message}`);
+        }
+        continue;
+      }
+
+      const deactivation = await setRegistryRowActiveStatus(supabase, target.table, target.row.id, false, userIdentity.userId);
+      if (deactivation.error || !deactivation.data) {
+        cascadeErrors.push(`disattivazione ${target.table} (${target.row.id}): ${deactivation.error?.message ?? 'sconosciuto'}`);
+        continue;
+      }
+
+      await logAuditEvent({
+        tableName: target.table,
+        recordId: target.row.id,
+        action: 'soft_delete',
+        oldValue: currentTarget.data,
+        newValue: deactivation.data
+      });
+
+      upsertLocalRow(target.table, deactivation.data as RegistryRecord);
+      cascadedCount += 1;
+    }
+
+    if (cascadeErrors.length > 0) {
+      setStatusMessage(`Record disattivato con ${cascadedCount} disattivazioni in cascata. Errori: ${cascadeErrors.join('; ')}`);
+      return;
+    }
+
+    setStatusMessage(`Record disattivato${cascadedCount > 0 ? ` con ${cascadedCount} disattivazioni in cascata` : ''}.`);
   }
 
   async function hardDeleteRecord(table: RegistryTable, row: RegistryRecord) {
@@ -777,9 +875,15 @@ export function RegistryManager() {
     const selectedProductId =
       table === 'sigle_lotto' && row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : undefined;
 
+    const isCurrentSelection = (itemId: string, selectedId: string | undefined) => selectedId === itemId;
+
+    const selectedVarietaId = row && 'varieta_id' in row ? row.varieta_id : undefined;
+
     const filteredVarieta = selectedProductId
-      ? data.varieta.filter((item) => item.prodotto_grezzo_id === selectedProductId)
-      : data.varieta;
+      ? data.varieta.filter(
+          (item) => item.prodotto_grezzo_id === selectedProductId && (item.is_active || isCurrentSelection(item.id, selectedVarietaId))
+        )
+      : data.varieta.filter((item) => item.is_active || isCurrentSelection(item.id, selectedVarietaId));
 
     switch (table) {
       case 'prodotti_grezzi':
@@ -811,7 +915,9 @@ export function RegistryManager() {
                 className="rounded-md border border-slate-300 px-3 py-2"
               >
                 <option value="">Seleziona prodotto</option>
-                {data.prodottiGrezzi.map((item) => (
+                {data.prodottiGrezzi
+                  .filter((item) => item.is_active || isCurrentSelection(item.id, row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : undefined))
+                  .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}
                   </option>
@@ -851,7 +957,9 @@ export function RegistryManager() {
                 className="rounded-md border border-slate-300 px-3 py-2"
               >
                 <option value="">Nessun vincolo</option>
-                {data.prodottiGrezzi.map((item) => (
+                {data.prodottiGrezzi
+                  .filter((item) => item.is_active || isCurrentSelection(item.id, row && 'vincolo_prodotto_grezzo_id' in row ? (row.vincolo_prodotto_grezzo_id ?? undefined) : undefined))
+                  .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}
                   </option>
@@ -866,7 +974,9 @@ export function RegistryManager() {
                 className="rounded-md border border-slate-300 px-3 py-2"
               >
                 <option value="">Nessun vincolo</option>
-                {data.varieta.map((item) => (
+                {data.varieta
+                  .filter((item) => item.is_active || isCurrentSelection(item.id, row && 'vincolo_varieta_id' in row ? (row.vincolo_varieta_id ?? undefined) : undefined))
+                  .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}
                   </option>
@@ -953,7 +1063,9 @@ export function RegistryManager() {
                 className="rounded-md border border-slate-300 px-3 py-2"
               >
                 <option value="">Seleziona prodotto</option>
-                {data.prodottiGrezzi.map((item) => (
+                {data.prodottiGrezzi
+                  .filter((item) => item.is_active || isCurrentSelection(item.id, row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : undefined))
+                  .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}
                   </option>

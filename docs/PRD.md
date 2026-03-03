@@ -103,7 +103,7 @@ Un Operatore può gestire più linee da una singola postazione. Più Operatori p
 Stampata via `react-to-print`. Contenuto: Prodotto Grezzo, Varietà, Articolo, Colli, Peso, Lotto ingresso, Data confezionamento, `codice_pedana` (in grande).
 
 ### Anagrafiche (Admin)
-Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto. Disponibili sia soft delete (`is_active = false`, `deleted_at`, `deleted_by`) sia eliminazione fisica definitiva riservata all'Admin con dialog di conferma. L'eliminazione definitiva usa vincoli `ON DELETE CASCADE` dove definiti nello schema. Vedi dettagli in `SCHEMA.md`.
+Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto. Disponibili sia soft delete (`is_active = false`, `deleted_at`, `deleted_by`) sia eliminazione fisica definitiva riservata all'Admin con dialog di conferma. Il soft delete applica cascata applicativa sulle anagrafiche collegate (es. prodotto grezzo → varietà/sigle/articoli vincolati), mentre l'eliminazione definitiva usa i vincoli `ON DELETE CASCADE` definiti nello schema. Vedi dettagli in `SCHEMA.md`.
 
 Interfaccia Admin v1: tab per entità, tabella ordinabile cliccando sull'header, paginazione, modale di creazione/modifica, azione inline di disattivazione/ripristino e azione di eliminazione definitiva con conferma.
 
@@ -132,7 +132,7 @@ Filtro per data o intervallo. Export PDF, Excel, CSV.
 | Scarto senza lavorazioni aperte | Permesso. L'Operatore inserisce sigla lotto + data ingresso. |
 | Reset totali cruscotto | Totali barra riepilogo riferiti al giorno corrente (dalla mezzanotte). |
 | Lavorazione aperta il giorno precedente | Resta visibile nel cruscotto fino a chiusura manuale. Attribuita alla data di apertura nei report. |
-| Cancellazione record | Nelle anagrafiche sono disponibili soft delete e hard delete. L'hard delete è riservato all'Admin, richiede dialog di conferma ed esegue cascata secondo i vincoli `ON DELETE CASCADE` del DB. I dati operativi restano tracciati in audit. |
+| Cancellazione record | Nelle anagrafiche sono disponibili soft delete e hard delete. Il soft delete applica disattivazione in cascata delle anagrafiche collegate; l'hard delete è riservato all'Admin, richiede dialog di conferma ed esegue cascata secondo i vincoli `ON DELETE CASCADE` del DB. I dati operativi restano tracciati in audit. |
 
 ---
 
