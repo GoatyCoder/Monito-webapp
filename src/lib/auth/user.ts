@@ -11,17 +11,55 @@ export type AuthUser = {
   role: UserRole;
 };
 
-export function getUserRoleFromMetadata(user: User | null): UserRole {
-  const roleFromMetadata = user?.app_metadata?.role;
-
-  if (typeof roleFromMetadata !== 'string') {
-    return 'viewer';
+function normalizeRole(value: unknown): UserRole | null {
+  if (typeof value !== 'string') {
+    return null;
   }
 
-  const normalizedRole = roleFromMetadata.toLowerCase();
+  const normalizedRole = value.trim().toLowerCase();
 
   if (ALLOWED_ROLES.includes(normalizedRole as UserRole)) {
     return normalizedRole as UserRole;
+  }
+
+  return null;
+}
+
+function getRoleFromMetadataField(value: unknown): UserRole | null {
+  const directRole = normalizeRole(value);
+  if (directRole) {
+    return directRole;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const arrayRole = normalizeRole(item);
+      if (arrayRole) {
+        return arrayRole;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function getUserRoleFromMetadata(user: User | null): UserRole {
+  if (!user) {
+    return 'viewer';
+  }
+
+  const roleCandidates = [
+    user.app_metadata?.role,
+    user.app_metadata?.roles,
+    user.user_metadata?.role,
+    user.user_metadata?.roles
+  ];
+
+  for (const candidate of roleCandidates) {
+    const mappedRole = getRoleFromMetadataField(candidate);
+    if (mappedRole) {
+      return mappedRole;
+    }
   }
 
   return 'viewer';
