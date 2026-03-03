@@ -59,14 +59,15 @@ export type Linea = EntityAuditFields &
     ordine: number | null;
   };
 
-export type SiglaLotto = EntityAuditFields & {
-  id: string;
-  codice: string;
-  produttore: string;
-  prodottoGrezzoId: string;
-  varietaId: string;
-  campo: string | null;
-};
+export type SiglaLotto = EntityAuditFields &
+  SoftDeletable & {
+    id: string;
+    codice: string;
+    produttore: string;
+    prodottoGrezzoId: string;
+    varietaId: string;
+    campo: string | null;
+  };
 
 // ops_YYYY
 export type Lavorazione = EntityAuditFields & {
