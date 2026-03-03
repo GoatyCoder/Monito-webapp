@@ -1,4 +1,12 @@
-export function FabScarto() {
+type FabScartoProps = {
+  canEdit: boolean;
+};
+
+export function FabScarto({ canEdit }: FabScartoProps) {
+  if (!canEdit) {
+    return null;
+  }
+
   return (
     <button
       type="button"

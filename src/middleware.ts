@@ -1,6 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { getUserRoleFromMetadata } from '@/lib/auth/user';
+import { APP_PATHS, AUTH_PATHS } from '@/lib/config/paths';
+
+const PUBLIC_PATHS = [AUTH_PATHS.login];
+const ADMIN_PATHS = [APP_PATHS.anagrafiche];
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
   type CookieToSet = {
@@ -28,13 +34,28 @@ export async function middleware(request: NextRequest) {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  const pathname = request.nextUrl.pathname;
+  const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
+
+  if (!user && !isPublicPath) {
+    return NextResponse.redirect(new URL(AUTH_PATHS.login, request.url));
+  }
+
+  if (user && isPublicPath) {
+    return NextResponse.redirect(new URL(APP_PATHS.dashboard, request.url));
+  }
+
+  if (user && ADMIN_PATHS.some((path) => pathname.startsWith(path))) {
+    const role = getUserRoleFromMetadata(user);
+
+    if (role !== 'admin') {
+      return NextResponse.redirect(new URL(APP_PATHS.dashboard, request.url));
+    }
   }
 
   return supabaseResponse;
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|login).*)']
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)']
 };
