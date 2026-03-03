@@ -17,7 +17,7 @@ type RegistryBase = {
   id: string;
   created_by: string;
   updated_by: string | null;
-  is_active?: boolean;
+  is_active: boolean;
   deleted_at?: string | null;
   deleted_by?: string | null;
 };
@@ -76,6 +76,29 @@ type RegistryData = {
 
 const supabase = createSupabaseClient();
 
+function sortByName<T extends { nome: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
+}
+
+function sortLinee(rows: LineaRow[]): LineaRow[] {
+  return [...rows].sort((a, b) => {
+    if (a.ordine === null && b.ordine === null) {
+      return a.nome.localeCompare(b.nome, 'it');
+    }
+    if (a.ordine === null) {
+      return 1;
+    }
+    if (b.ordine === null) {
+      return -1;
+    }
+    return a.ordine - b.ordine;
+  });
+}
+
+function sortSigle(rows: SiglaLottoRow[]): SiglaLottoRow[] {
+  return [...rows].sort((a, b) => a.codice.localeCompare(b.codice, 'it'));
+}
+
 function parseNumberOrNull(value: string): number | null {
   if (!value.trim()) {
     return null;
@@ -103,6 +126,63 @@ export function RegistryManager() {
   const varietaById = useMemo(() => {
     return new Map(data.varieta.map((varieta) => [varieta.id, varieta.nome]));
   }, [data.varieta]);
+
+  function upsertLocalRow(table: RegistryTable, row: Record<string, unknown>) {
+    setData((currentData) => {
+      switch (table) {
+        case 'prodotti_grezzi': {
+          const newRow = row as ProdottoGrezzoRow;
+          const rows = currentData.prodottiGrezzi.filter((existingRow) => existingRow.id !== newRow.id);
+          return { ...currentData, prodottiGrezzi: sortByName([...rows, newRow]) };
+        }
+        case 'varieta': {
+          const newRow = row as VarietaRow;
+          const rows = currentData.varieta.filter((existingRow) => existingRow.id !== newRow.id);
+          return { ...currentData, varieta: sortByName([...rows, newRow]) };
+        }
+        case 'articoli': {
+          const newRow = row as ArticoloRow;
+          const rows = currentData.articoli.filter((existingRow) => existingRow.id !== newRow.id);
+          return { ...currentData, articoli: sortByName([...rows, newRow]) };
+        }
+        case 'imballaggi_secondari': {
+          const newRow = row as ImballaggioRow;
+          const rows = currentData.imballaggi.filter((existingRow) => existingRow.id !== newRow.id);
+          return { ...currentData, imballaggi: sortByName([...rows, newRow]) };
+        }
+        case 'linee': {
+          const newRow = row as LineaRow;
+          const rows = currentData.linee.filter((existingRow) => existingRow.id !== newRow.id);
+          return { ...currentData, linee: sortLinee([...rows, newRow]) };
+        }
+        case 'sigle_lotto': {
+          const newRow = row as SiglaLottoRow;
+          const rows = currentData.sigleLotto.filter((existingRow) => existingRow.id !== newRow.id);
+          return { ...currentData, sigleLotto: sortSigle([...rows, newRow]) };
+        }
+      }
+    });
+  }
+
+  function validateSiglaLottoPairing(payload: Record<string, unknown>): string | null {
+    const prodottoId = typeof payload.prodotto_grezzo_id === 'string' ? payload.prodotto_grezzo_id : '';
+    const varietaId = typeof payload.varieta_id === 'string' ? payload.varieta_id : '';
+
+    if (!prodottoId || !varietaId) {
+      return null;
+    }
+
+    const selectedVarieta = data.varieta.find((varieta) => varieta.id === varietaId);
+    if (!selectedVarieta) {
+      return 'Varietà selezionata non trovata.';
+    }
+
+    if (selectedVarieta.prodotto_grezzo_id !== prodottoId) {
+      return 'La varietà selezionata non appartiene al prodotto grezzo scelto.';
+    }
+
+    return null;
+  }
 
   async function loadRegistryData() {
     const [
@@ -138,7 +218,9 @@ export function RegistryManager() {
     ].filter((error) => error !== null);
 
     if (errors.length > 0) {
-      setStatusMessage(`Errore caricamento anagrafiche: ${errors[0]?.message ?? 'sconosciuto'}`);
+      const errorMessages = errors.map((error) => error.message).join('; ');
+      console.error('Errore durante il caricamento delle anagrafiche:', errors);
+      setStatusMessage(`Errore caricamento anagrafiche: ${errorMessages}`);
       return;
     }
 
@@ -195,6 +277,14 @@ export function RegistryManager() {
       return;
     }
 
+    if (table === 'sigle_lotto') {
+      const incompatibilityError = validateSiglaLottoPairing(payload);
+      if (incompatibilityError) {
+        setStatusMessage(incompatibilityError);
+        return;
+      }
+    }
+
     const response = await supabase
       .schema(REGISTRY_SCHEMA)
       .from(table)
@@ -216,13 +306,21 @@ export function RegistryManager() {
     });
 
     setStatusMessage(`Record creato in ${table}.`);
-    await loadRegistryData();
+    upsertLocalRow(table, response.data);
   }
 
   async function updateRecord(table: RegistryTable, rowId: string, payload: Record<string, unknown>) {
     if (!userIdentity) {
       setStatusMessage('Utente non disponibile. Ricarica la pagina.');
       return;
+    }
+
+    if (table === 'sigle_lotto') {
+      const incompatibilityError = validateSiglaLottoPairing(payload);
+      if (incompatibilityError) {
+        setStatusMessage(incompatibilityError);
+        return;
+      }
     }
 
     const existing = await supabase.schema(REGISTRY_SCHEMA).from(table).select('*').eq('id', rowId).single();
@@ -253,7 +351,7 @@ export function RegistryManager() {
     });
 
     setStatusMessage(`Record aggiornato in ${table}.`);
-    await loadRegistryData();
+    upsertLocalRow(table, response.data);
   }
 
   async function softDeleteRecord(table: RegistryTable, rowId: string, shouldRestore: boolean) {
@@ -302,7 +400,7 @@ export function RegistryManager() {
     });
 
     setStatusMessage(`${shouldRestore ? 'Record ripristinato' : 'Record disattivato'} in ${table}.`);
-    await loadRegistryData();
+    upsertLocalRow(table, response.data);
   }
 
   async function onCreateProdotto(event: FormEvent<HTMLFormElement>) {
