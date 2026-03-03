@@ -1,17 +1,18 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { REGISTRY_SCHEMA } from '@/lib/config/db';
+import {
+  createRegistryRow,
+  fetchCurrentUser,
+  fetchRegistryRowById,
+  fetchRegistryTable,
+  type RegistryTable,
+  setRegistryRowActiveStatus,
+  updateRegistryRow
+} from '@/lib/db/registry-queries';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
-
-type RegistryTable =
-  | 'prodotti_grezzi'
-  | 'varieta'
-  | 'articoli'
-  | 'imballaggi_secondari'
-  | 'linee'
-  | 'sigle_lotto';
 
 type RegistryBase = {
   id: string;
@@ -74,7 +75,6 @@ type RegistryData = {
   sigleLotto: SiglaLottoRow[];
 };
 
-const supabase = createSupabaseClient();
 
 function sortByName<T extends { nome: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
@@ -118,6 +118,7 @@ export function RegistryManager() {
   });
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [userIdentity, setUserIdentity] = useState<{ userId: string; actorName: string } | null>(null);
+  const supabase = useMemo(() => createSupabaseClient(), []);
 
   const prodottoById = useMemo(() => {
     return new Map(data.prodottiGrezzi.map((prodotto) => [prodotto.id, prodotto.nome]));
@@ -184,7 +185,7 @@ export function RegistryManager() {
     return null;
   }
 
-  async function loadRegistryData() {
+  const loadRegistryData = useCallback(async () => {
     const [
       prodottiResponse,
       varietaResponse,
@@ -194,17 +195,13 @@ export function RegistryManager() {
       sigleLottoResponse,
       userResponse
     ] = await Promise.all([
-      supabase.schema(REGISTRY_SCHEMA).from('prodotti_grezzi').select('*').order('nome', { ascending: true }),
-      supabase.schema(REGISTRY_SCHEMA).from('varieta').select('*').order('nome', { ascending: true }),
-      supabase.schema(REGISTRY_SCHEMA).from('articoli').select('*').order('nome', { ascending: true }),
-      supabase
-        .schema(REGISTRY_SCHEMA)
-        .from('imballaggi_secondari')
-        .select('*')
-        .order('nome', { ascending: true }),
-      supabase.schema(REGISTRY_SCHEMA).from('linee').select('*').order('ordine', { ascending: true }),
-      supabase.schema(REGISTRY_SCHEMA).from('sigle_lotto').select('*').order('codice', { ascending: true }),
-      supabase.auth.getUser()
+      fetchRegistryTable(supabase, 'prodotti_grezzi', 'nome'),
+      fetchRegistryTable(supabase, 'varieta', 'nome'),
+      fetchRegistryTable(supabase, 'articoli', 'nome'),
+      fetchRegistryTable(supabase, 'imballaggi_secondari', 'nome'),
+      fetchRegistryTable(supabase, 'linee', 'ordine'),
+      fetchRegistryTable(supabase, 'sigle_lotto', 'codice'),
+      fetchCurrentUser(supabase)
     ]);
 
     const errors = [
@@ -241,11 +238,11 @@ export function RegistryManager() {
         actorName: typeof fullName === 'string' && fullName.trim() ? fullName : user.email ?? 'Utente'
       });
     }
-  }
+  }, [supabase]);
 
   useEffect(() => {
     void loadRegistryData();
-  }, []);
+  }, [loadRegistryData]);
 
   async function logAuditEvent(params: {
     tableName: RegistryTable;
@@ -285,12 +282,7 @@ export function RegistryManager() {
       }
     }
 
-    const response = await supabase
-      .schema(REGISTRY_SCHEMA)
-      .from(table)
-      .insert({ ...payload, created_by: userIdentity.userId })
-      .select('*')
-      .single();
+    const response = await createRegistryRow(supabase, table, payload, userIdentity.userId);
 
     if (response.error || !response.data) {
       setStatusMessage(`Errore creazione ${table}: ${response.error?.message ?? 'sconosciuto'}`);
@@ -323,19 +315,13 @@ export function RegistryManager() {
       }
     }
 
-    const existing = await supabase.schema(REGISTRY_SCHEMA).from(table).select('*').eq('id', rowId).single();
+    const existing = await fetchRegistryRowById(supabase, table, rowId);
     if (existing.error || !existing.data) {
       setStatusMessage(`Errore lettura record ${table}: ${existing.error?.message ?? 'sconosciuto'}`);
       return;
     }
 
-    const response = await supabase
-      .schema(REGISTRY_SCHEMA)
-      .from(table)
-      .update({ ...payload, updated_at: new Date().toISOString(), updated_by: userIdentity.userId })
-      .eq('id', rowId)
-      .select('*')
-      .single();
+    const response = await updateRegistryRow(supabase, table, rowId, payload, userIdentity.userId);
 
     if (response.error || !response.data) {
       setStatusMessage(`Errore aggiornamento ${table}: ${response.error?.message ?? 'sconosciuto'}`);
@@ -360,29 +346,13 @@ export function RegistryManager() {
       return;
     }
 
-    const existing = await supabase.schema(REGISTRY_SCHEMA).from(table).select('*').eq('id', rowId).single();
+    const existing = await fetchRegistryRowById(supabase, table, rowId);
     if (existing.error || !existing.data) {
       setStatusMessage(`Errore lettura record ${table}: ${existing.error?.message ?? 'sconosciuto'}`);
       return;
     }
 
-    const payload = shouldRestore
-      ? {
-          is_active: true,
-          deleted_at: null,
-          deleted_by: null,
-          updated_at: new Date().toISOString(),
-          updated_by: userIdentity.userId
-        }
-      : {
-          is_active: false,
-          deleted_at: new Date().toISOString(),
-          deleted_by: userIdentity.userId,
-          updated_at: new Date().toISOString(),
-          updated_by: userIdentity.userId
-        };
-
-    const response = await supabase.schema(REGISTRY_SCHEMA).from(table).update(payload).eq('id', rowId).select('*').single();
+    const response = await setRegistryRowActiveStatus(supabase, table, rowId, shouldRestore, userIdentity.userId);
 
     if (response.error || !response.data) {
       setStatusMessage(

@@ -46,7 +46,7 @@ npm run build
 ### Prima volta
 
 1. Crea un progetto su [supabase.com](https://supabase.com) (region: West EU)
-2. **Supabase → Project Settings → Integrations → Vercel → Connect** — seleziona il repo e il branch `main`. Supabase inietta automaticamente `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` in Vercel.
+2. **Supabase → Project Settings → Integrations → Vercel → Connect** — seleziona il repo e il branch `main`. Supabase inietta automaticamente `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in Vercel.
 3. Esegui le migration SQL in `docs/Schema.md §Migration SQL` nell'ordine indicato.
 4. Crea il primo utente Admin: **Supabase → Authentication → Users → Add user**, poi assegna il ruolo con la query in `docs/Schema.md §Utenti`.
 5. Abilita Realtime: **Supabase → Database → Replication** — attiva `ops_2025.lavorazioni`, `ops_2025.pedane`, `ops_2025.scarti`.
