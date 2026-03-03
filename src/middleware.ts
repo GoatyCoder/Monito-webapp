@@ -22,18 +22,53 @@ function normalizeRole(value: unknown): UserRole | null {
   return null;
 }
 
+function getRoleFromClaimField(value: unknown): UserRole | null {
+  const directRole = normalizeRole(value);
+  if (directRole) {
+    return directRole;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const roleFromArray = normalizeRole(item);
+      if (roleFromArray) {
+        return roleFromArray;
+      }
+    }
+  }
+
+  return null;
+}
+
 function getRoleFromClaims(claims: Record<string, unknown> | null): UserRole {
   if (!claims) {
     return 'viewer';
   }
 
-  const appMetadata = claims.app_metadata;
-  if (typeof appMetadata !== 'object' || appMetadata === null) {
-    return 'viewer';
+  const appMetadata =
+    typeof claims.app_metadata === 'object' && claims.app_metadata !== null
+      ? (claims.app_metadata as Record<string, unknown>)
+      : null;
+  const userMetadata =
+    typeof claims.user_metadata === 'object' && claims.user_metadata !== null
+      ? (claims.user_metadata as Record<string, unknown>)
+      : null;
+
+  const roleCandidates = [
+    appMetadata?.role,
+    appMetadata?.roles,
+    userMetadata?.role,
+    userMetadata?.roles
+  ];
+
+  for (const candidate of roleCandidates) {
+    const mappedRole = getRoleFromClaimField(candidate);
+    if (mappedRole) {
+      return mappedRole;
+    }
   }
 
-  const roleValue = (appMetadata as Record<string, unknown>).role;
-  return normalizeRole(roleValue) ?? 'viewer';
+  return 'viewer';
 }
 
 export async function middleware(request: NextRequest) {
