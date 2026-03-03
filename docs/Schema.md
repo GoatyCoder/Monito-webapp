@@ -612,7 +612,55 @@ CREATE TABLE audit.log (
 );
 ```
 
-### Blocco 5 — Indici
+### Blocco 5 — RPC audit (`log_audit_event`)
+```sql
+CREATE OR REPLACE FUNCTION public.log_audit_event(
+  actor_id uuid,
+  actor_name text,
+  schema_name text,
+  table_name text,
+  record_id uuid,
+  action text,
+  old_value jsonb DEFAULT NULL,
+  new_value jsonb DEFAULT NULL,
+  reason text DEFAULT NULL
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, audit
+AS $$
+BEGIN
+  INSERT INTO audit.log (
+    actor_id,
+    actor_name,
+    schema_name,
+    table_name,
+    record_id,
+    action,
+    old_value,
+    new_value,
+    reason
+  )
+  VALUES (
+    actor_id,
+    actor_name,
+    schema_name,
+    table_name,
+    record_id,
+    action,
+    old_value,
+    new_value,
+    reason
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.log_audit_event(uuid, text, text, text, uuid, text, jsonb, jsonb, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.log_audit_event(uuid, text, text, text, uuid, text, jsonb, jsonb, text) TO authenticated;
+```
+
+### Blocco 6 — Indici
 ```sql
 CREATE INDEX idx_lav_linea    ON ops_2025.lavorazioni(linea_id);
 CREATE INDEX idx_lav_stato    ON ops_2025.lavorazioni(stato);
@@ -627,7 +675,7 @@ CREATE INDEX idx_audit_actor  ON audit.log(actor_id);
 
 > Nota: evitare indici su espressioni derivate da `timestamptz` (es. `registrata_at::date` / `DATE(registrata_at)`) perché possono fallire con `ERROR: functions in index expression must be marked IMMUTABLE`. Per i filtri giornalieri usare range su `registrata_at` (es. `registrata_at >= :day AND registrata_at < :day + INTERVAL '1 day'`).
 
-### Blocco 6 — Funzione ruolo e RLS
+### Blocco 7 — Funzione ruolo e RLS
 ```sql
 CREATE OR REPLACE FUNCTION public.auth_role() RETURNS text AS $$
   SELECT COALESCE((auth.jwt() -> 'user_metadata' ->> 'role'), 'viewer');
@@ -677,7 +725,7 @@ CREATE POLICY "select" ON audit.log FOR SELECT TO authenticated USING (public.au
 ```
 
 
-### Blocco 7 — Grants per schemi non-public
+### Blocco 8 — Grants per schemi non-public
 
 > Senza questi grant, le query client possono fallire con `permission denied for schema ...` anche se le policy RLS sono corrette.
 ```sql
@@ -731,9 +779,9 @@ WHERE email = 'viewer@azienda.it';
 |---|---|---|
 | 1 | Supabase SQL Editor | Blocco 2 con nuovo `ops_YYYY` |
 | 2 | Supabase SQL Editor | Blocco 3 con nuovo `ops_YYYY` |
-| 3 | Supabase SQL Editor | Blocco 5 indici con nuovo `ops_YYYY` |
-| 4 | Supabase SQL Editor | Blocco 6 RLS per nuovo `ops_YYYY` |
-| 5 | Supabase SQL Editor | Blocco 7 Grants per nuovo `ops_YYYY` |
+| 3 | Supabase SQL Editor | Blocco 6 indici con nuovo `ops_YYYY` |
+| 4 | Supabase SQL Editor | Blocco 7 RLS per nuovo `ops_YYYY` |
+| 5 | Supabase SQL Editor | Blocco 8 Grants per nuovo `ops_YYYY` |
 | 6 | Supabase Replication | Aggiungi toggle per 3 tabelle nuovo anno |
 | 7 | Supabase API | Aggiorna *Exposed schemas* includendo nuovo `ops_YYYY` |
 | 8 | GitHub | Aggiorna `OPS_SCHEMA` in `src/lib/config/db.ts`, committa su `main` |

@@ -538,7 +538,12 @@ export function RegistryManager() {
     });
 
     if (response.error) {
-      setStatusMessage(`Errore audit log ${params.tableName}: ${response.error.message}`);
+      const missingRpc = response.error.message.includes('Could not find the function public.log_audit_event');
+      setStatusMessage(
+        missingRpc
+          ? `Errore audit log ${params.tableName}: funzione RPC mancante. Esegui la migration sql/20260303_log_audit_event_rpc.sql su Supabase.`
+          : `Errore audit log ${params.tableName}: ${response.error.message}`
+      );
       return false;
     }
 
