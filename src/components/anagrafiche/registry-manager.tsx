@@ -770,6 +770,14 @@ export function RegistryManager() {
 
     const response = await deleteRegistryRow(supabase, table, row.id);
     if (response.error || !response.data) {
+      const message = response.error?.message ?? 'sconosciuto';
+      if (message.toLowerCase().includes('permission denied')) {
+        setStatusMessage(
+          `Errore eliminazione definitiva ${table}: permessi DELETE mancanti su schema registry. Aggiorna GRANT/RLS come da docs/Schema.md (Blocco 7).`
+        );
+        return;
+      }
+
       setStatusMessage(`Errore eliminazione definitiva ${table}: ${response.error?.message ?? 'sconosciuto'}`);
       return;
     }

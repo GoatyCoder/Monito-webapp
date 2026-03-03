@@ -681,19 +681,21 @@ GRANT USAGE ON SCHEMA registry TO authenticated;
 GRANT USAGE ON SCHEMA ops_2025 TO authenticated;
 GRANT USAGE ON SCHEMA audit TO authenticated;
 
-GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA registry TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA ops_2025 TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA registry TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ops_2025 TO authenticated;
 GRANT SELECT, INSERT ON TABLE audit.log TO authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA registry
-GRANT SELECT, INSERT, UPDATE ON TABLES TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA ops_2025
-GRANT SELECT, INSERT, UPDATE ON TABLES TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA audit
 GRANT SELECT, INSERT ON TABLES TO authenticated;
 ```
+
+Se il progetto esiste già e hai introdotto l'hard delete dopo la prima migrazione, riesegui i `GRANT ... DELETE` sopra per riallineare i permessi correnti.
 
 In Supabase: **Project Settings → API → Exposed schemas** deve includere almeno `registry`, `ops_2025` e `audit`.
 
