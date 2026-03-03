@@ -137,11 +137,11 @@
 
 ## Auth & Ruoli
 
-- [ ] Login funzionante con Supabase Auth
-- [ ] Lettura ruolo da JWT (`user_metadata.role`)
-- [ ] Nascondere pulsanti azione al Viewer
-- [ ] Proteggere route `/anagrafiche` (solo Admin)
-- [ ] Mostrare nome utente e ruolo reali in header
+- [x] Login funzionante con Supabase Auth
+- [x] Lettura ruolo da JWT (`user_metadata.role`)
+- [x] Nascondere pulsanti azione al Viewer
+- [x] Proteggere route `/anagrafiche` (solo Admin)
+- [x] Mostrare nome utente e ruolo reali in header
 
 ---
 

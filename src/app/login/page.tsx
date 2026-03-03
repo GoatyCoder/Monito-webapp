@@ -8,23 +8,27 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
   const supabase = createSupabaseClient();
 
   const handleLogin = async () => {
     setError('');
+    setIsSubmitting(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password
     });
 
-    if (error) {
-      setError(error.message);
+    if (signInError) {
+      setError(signInError.message);
+      setIsSubmitting(false);
       return;
     }
 
     router.push('/dashboard');
+    router.refresh();
   };
 
   return (
@@ -44,6 +48,8 @@ export default function LoginPage() {
               onChange={(event) => setEmail(event.target.value)}
               className="rounded border border-secondary px-3 py-2"
               placeholder="nome@azienda.it"
+              autoComplete="email"
+              disabled={isSubmitting}
             />
           </label>
 
@@ -55,6 +61,8 @@ export default function LoginPage() {
               onChange={(event) => setPassword(event.target.value)}
               className="rounded border border-secondary px-3 py-2"
               onKeyDown={(event) => event.key === 'Enter' && handleLogin()}
+              autoComplete="current-password"
+              disabled={isSubmitting}
             />
           </label>
 
@@ -62,9 +70,10 @@ export default function LoginPage() {
 
           <button
             onClick={handleLogin}
-            className="w-full rounded bg-primary px-4 py-2 text-white"
+            disabled={isSubmitting}
+            className="w-full rounded bg-primary px-4 py-2 text-white disabled:opacity-50"
           >
-            Accedi
+            {isSubmitting ? 'Accesso in corso...' : 'Accedi'}
           </button>
         </div>
       </div>

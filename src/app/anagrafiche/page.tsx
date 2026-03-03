@@ -1,4 +1,20 @@
-export default function AnagrafichePage() {
+import { redirect } from 'next/navigation';
+
+import { getUserRoleFromMetadata } from '@/lib/auth/user';
+import { createSupabaseServerClient } from '@/lib/db/supabase-server';
+
+export default async function AnagrafichePage() {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  const role = getUserRoleFromMetadata(user);
+
+  if (role !== 'admin') {
+    redirect('/dashboard');
+  }
+
   return (
     <section className="space-y-4">
       {/* Sezione amministrazione anagrafiche. */}

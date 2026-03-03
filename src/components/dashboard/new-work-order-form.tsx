@@ -34,7 +34,11 @@ function dateFromDayOfYear(dayOfYear: number, year: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function NewWorkOrderForm() {
+type NewWorkOrderFormProps = {
+  canEdit: boolean;
+};
+
+export function NewWorkOrderForm({ canEdit }: NewWorkOrderFormProps) {
   const [siglaLotto, setSiglaLotto] = useState('');
   const [dataIngresso, setDataIngresso] = useState('');
   const [lottoIngressoDoy, setLottoIngressoDoy] = useState('');
@@ -82,6 +86,7 @@ export function NewWorkOrderForm() {
         <p className="text-sm text-secondary">Workflow semplificato: sigla lotto + data ingresso/DOY.</p>
       </header>
 
+      {canEdit ? (
       <div className="grid gap-4 md:grid-cols-3">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Sigla lotto</span>
@@ -115,6 +120,9 @@ export function NewWorkOrderForm() {
           />
         </label>
       </div>
+      ) : (
+        <p className="text-sm text-secondary">Modalità sola lettura: apertura lavorazioni disponibile solo per Admin e Operatore.</p>
+      )}
 
       <p className="mt-3 text-xs text-secondary">{helperText}</p>
     </form>

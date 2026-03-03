@@ -1,6 +1,11 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { getUserRoleFromMetadata } from '@/lib/auth/user';
+
+const PUBLIC_PATHS = ['/login'];
+const ADMIN_PATHS = ['/anagrafiche'];
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
   type CookieToSet = {
@@ -28,13 +33,28 @@ export async function middleware(request: NextRequest) {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+  const pathname = request.nextUrl.pathname;
+  const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
+
+  if (!user && !isPublicPath) {
     return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  if (user && isPublicPath) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
+  if (user && ADMIN_PATHS.some((path) => pathname.startsWith(path))) {
+    const role = getUserRoleFromMetadata(user);
+
+    if (role !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
   }
 
   return supabaseResponse;
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|login).*)']
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)']
 };

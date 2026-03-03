@@ -1,8 +1,9 @@
 type LineCardProps = {
   state: 'inactive' | 'active' | 'multi';
+  canEdit: boolean;
 };
 
-export function LineCard({ state }: LineCardProps) {
+export function LineCard({ state, canEdit }: LineCardProps) {
   const accent =
     state === 'inactive'
       ? 'border-secondary opacity-70'
@@ -21,12 +22,16 @@ export function LineCard({ state }: LineCardProps) {
       {/* Corpo placeholder: nessun dato reale. */}
       <p className="mb-4 text-sm text-secondary">Lotto, articolo, statistiche e azioni saranno collegate ai dati runtime.</p>
 
-      {/* Azioni placeholder (abilitazioni ruolo da implementare). */}
-      <div className="flex flex-wrap gap-2">
-        <button className="rounded bg-primary px-3 py-1.5 text-xs text-white">+ Pedana</button>
-        <button className="rounded bg-error px-3 py-1.5 text-xs text-white">Chiudi</button>
-        <button className="rounded border border-secondary px-3 py-1.5 text-xs text-secondary">Modifica</button>
-      </div>
+      {/* Azioni nascoste al Viewer secondo requisiti PRD. */}
+      {canEdit ? (
+        <div className="flex flex-wrap gap-2">
+          <button className="rounded bg-primary px-3 py-1.5 text-xs text-white">+ Pedana</button>
+          <button className="rounded bg-error px-3 py-1.5 text-xs text-white">Chiudi</button>
+          <button className="rounded border border-secondary px-3 py-1.5 text-xs text-secondary">Modifica</button>
+        </div>
+      ) : (
+        <p className="text-xs text-secondary">Modalità sola lettura (Viewer).</p>
+      )}
     </article>
   );
 }
