@@ -139,6 +139,9 @@ produttore         text NOT NULL
 prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id)
 varieta_id         uuid NOT NULL REFERENCES registry.varieta(id)
 campo              text
+is_active          boolean NOT NULL DEFAULT true
+deleted_at         timestamptz
+deleted_by         uuid REFERENCES auth.users(id)
 ```
 
 ---
@@ -339,7 +342,7 @@ export type Linea = EntityAuditFields & SoftDeletable & {
   ordine: number | null;
 };
 
-export type SiglaLotto = EntityAuditFields & {
+export type SiglaLotto = EntityAuditFields & SoftDeletable & {
   id: string;
   codice: string;
   produttore: string;
@@ -492,7 +495,10 @@ CREATE TABLE registry.sigle_lotto (
   produttore         text NOT NULL,
   prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id),
   varieta_id         uuid NOT NULL REFERENCES registry.varieta(id),
-  campo              text
+  campo              text,
+  is_active          boolean NOT NULL DEFAULT true,
+  deleted_at         timestamptz,
+  deleted_by         uuid REFERENCES auth.users(id)
 );
 ```
 

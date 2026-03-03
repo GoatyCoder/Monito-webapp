@@ -521,10 +521,11 @@ export function RegistryManager() {
     newValue: Record<string, unknown> | null;
   }) {
     if (!userIdentity) {
-      return;
+      setStatusMessage('Utente non disponibile. Impossibile tracciare audit log.');
+      return false;
     }
 
-    await supabase.rpc('log_audit_event', {
+    const response = await supabase.rpc('log_audit_event', {
       actor_id: userIdentity.userId,
       actor_name: userIdentity.actorName,
       schema_name: REGISTRY_SCHEMA,
@@ -535,6 +536,13 @@ export function RegistryManager() {
       new_value: params.newValue,
       reason: null
     });
+
+    if (response.error) {
+      setStatusMessage(`Errore audit log ${params.tableName}: ${response.error.message}`);
+      return false;
+    }
+
+    return true;
   }
 
   async function createRecord(table: RegistryTable, payload: Record<string, unknown>) {
@@ -557,13 +565,17 @@ export function RegistryManager() {
       return false;
     }
 
-    await logAuditEvent({
+    const auditLogged = await logAuditEvent({
       tableName: table,
       recordId: response.data.id,
       action: 'insert',
       oldValue: null,
       newValue: response.data
     });
+
+    if (!auditLogged) {
+      return false;
+    }
 
     upsertLocalRow(table, response.data as RegistryRecord);
     setStatusMessage('Record creato con successo.');
@@ -596,13 +608,17 @@ export function RegistryManager() {
       return false;
     }
 
-    await logAuditEvent({
+    const auditLogged = await logAuditEvent({
       tableName: table,
       recordId: rowId,
       action: 'update',
       oldValue: existing.data,
       newValue: response.data
     });
+
+    if (!auditLogged) {
+      return false;
+    }
 
     upsertLocalRow(table, response.data as RegistryRecord);
     setStatusMessage('Record aggiornato con successo.');
@@ -631,13 +647,17 @@ export function RegistryManager() {
       return;
     }
 
-    await logAuditEvent({
+    const auditLogged = await logAuditEvent({
       tableName: table,
       recordId: row.id,
       action: shouldRestore ? 'restore' : 'soft_delete',
       oldValue: existing.data,
       newValue: response.data
     });
+
+    if (!auditLogged) {
+      return;
+    }
 
     upsertLocalRow(table, response.data as RegistryRecord);
     setStatusMessage(shouldRestore ? 'Record ripristinato.' : 'Record disattivato.');
