@@ -47,10 +47,10 @@ import { OPS_SCHEMA, REGISTRY_SCHEMA, AUDIT_SCHEMA } from '@/lib/config/db';
 { is_active: false, deleted_at: new Date().toISOString(), deleted_by: userId }
 ```
 
-**Audit log** — ogni INSERT, UPDATE, soft_delete, restore, open, close, reopen produce una riga in `audit.log`:
+**Audit log** — ogni INSERT, UPDATE, soft_delete, restore, open, close, reopen produce una riga in `audit.log` tramite RPC (non usare `from('audit.log')`):
 
 ```typescript
-await supabase.from('audit.log').insert({
+await supabase.rpc('log_audit_event', {
   actor_id:    userId,
   actor_name:  userName,       // snapshot al momento dell'azione
   schema_name: OPS_SCHEMA,     // o REGISTRY_SCHEMA

@@ -187,6 +187,8 @@ registrata_da  uuid NOT NULL REFERENCES auth.users(id)
 
 **Formato `codice_pedana`:** `PYY-DOY-NNNN` (es. `P26-051-0042`). Generato da trigger DB.
 
+Per evitare race condition su inserimenti concorrenti, il progressivo giornaliero non va calcolato con `COUNT(*) + 1`: usare una tabella contatore dedicata (`ops_YYYY.pedane_daily_counter`) aggiornata in modo atomico con `INSERT ... ON CONFLICT ... DO UPDATE ... RETURNING`.
+
 **Logica peso:**
 - `peso_variabile = false` → `peso_totale = numero_colli × peso_per_collo`, calcolato lato app, non modificabile
 - `peso_variabile = true` → app propone la stima, operatore può sovrascrivere con avviso visivo
@@ -531,6 +533,11 @@ CREATE TABLE ops_2025.pedane (
   registrata_da  uuid NOT NULL REFERENCES auth.users(id)
 );
 
+CREATE TABLE ops_2025.pedane_daily_counter (
+  day        date PRIMARY KEY DEFAULT CURRENT_DATE,
+  last_value integer NOT NULL
+);
+
 CREATE TABLE ops_2025.scarti (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at    timestamptz DEFAULT now(),
@@ -560,9 +567,13 @@ DECLARE
 BEGIN
   anno    := TO_CHAR(oggi, 'YY');
   doy_val := LPAD(EXTRACT(DOY FROM oggi)::text, 3, '0');
-  SELECT COUNT(*) + 1 INTO progressivo
-  FROM ops_2025.pedane
-  WHERE registrata_at::date = oggi;
+
+  INSERT INTO ops_2025.pedane_daily_counter (day, last_value)
+  VALUES (oggi, 1)
+  ON CONFLICT (day) DO UPDATE
+  SET last_value = ops_2025.pedane_daily_counter.last_value + 1
+  RETURNING last_value INTO progressivo;
+
   NEW.codice_pedana := 'P' || anno || '-' || doy_val || '-' || LPAD(progressivo::text, 4, '0');
   RETURN NEW;
 END;
@@ -573,7 +584,7 @@ BEFORE INSERT ON ops_2025.pedane
 FOR EACH ROW EXECUTE FUNCTION ops_2025.generate_codice_pedana();
 ```
 
-> `registrata_at::date` è obbligatorio. `DATE(registrata_at)` non è IMMUTABLE in PostgreSQL e causa errore sugli indici.
+> Questa implementazione elimina la race condition del calcolo progressivo e mantiene l'univocità anche con inserimenti concorrenti.
 
 ### Blocco 4 — Schema audit
 ```sql
@@ -657,6 +668,31 @@ CREATE POLICY "insert" ON audit.log FOR INSERT TO authenticated WITH CHECK (true
 CREATE POLICY "select" ON audit.log FOR SELECT TO authenticated USING (public.auth_role() = 'admin');
 ```
 
+
+### Blocco 7 — Grants per schemi non-public
+
+> Senza questi grant, le query client possono fallire con `permission denied for schema ...` anche se le policy RLS sono corrette.
+```sql
+GRANT USAGE ON SCHEMA registry TO authenticated;
+GRANT USAGE ON SCHEMA ops_2025 TO authenticated;
+GRANT USAGE ON SCHEMA audit TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA registry TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA ops_2025 TO authenticated;
+GRANT SELECT, INSERT ON TABLE audit.log TO authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA registry
+GRANT SELECT, INSERT, UPDATE ON TABLES TO authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA ops_2025
+GRANT SELECT, INSERT, UPDATE ON TABLES TO authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA audit
+GRANT SELECT, INSERT ON TABLES TO authenticated;
+```
+
+In Supabase: **Project Settings → API → Exposed schemas** deve includere almeno `registry`, `ops_2025` e `audit`.
+
 ---
 
 ## Utenti
@@ -689,7 +725,9 @@ WHERE email = 'viewer@azienda.it';
 | 2 | Supabase SQL Editor | Blocco 3 con nuovo `ops_YYYY` |
 | 3 | Supabase SQL Editor | Blocco 5 indici con nuovo `ops_YYYY` |
 | 4 | Supabase SQL Editor | Blocco 6 RLS per nuovo `ops_YYYY` |
-| 5 | Supabase Replication | Aggiungi toggle per 3 tabelle nuovo anno |
-| 6 | GitHub | Aggiorna `OPS_SCHEMA` in `src/lib/config/db.ts`, committa su `main` |
-| 7 | Vercel | Verifica redeploy |
-| 8 | Supabase Replication | Disattiva toggle anno precedente (opzionale) |
+| 5 | Supabase SQL Editor | Blocco 7 Grants per nuovo `ops_YYYY` |
+| 6 | Supabase Replication | Aggiungi toggle per 3 tabelle nuovo anno |
+| 7 | Supabase API | Aggiorna *Exposed schemas* includendo nuovo `ops_YYYY` |
+| 8 | GitHub | Aggiorna `OPS_SCHEMA` in `src/lib/config/db.ts`, committa su `main` |
+| 9 | Vercel | Verifica redeploy |
+| 10 | Supabase Replication | Disattiva toggle anno precedente (opzionale) |
