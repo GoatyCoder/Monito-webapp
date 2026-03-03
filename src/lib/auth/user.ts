@@ -11,7 +11,7 @@ export type AuthUser = {
   role: UserRole;
 };
 
-function normalizeRole(value: unknown): UserRole | null {
+export function normalizeRole(value: unknown): UserRole | null {
   if (typeof value !== 'string') {
     return null;
   }
@@ -25,7 +25,7 @@ function normalizeRole(value: unknown): UserRole | null {
   return null;
 }
 
-function getRoleFromMetadataField(value: unknown): UserRole | null {
+export function getRoleFromMetadataField(value: unknown): UserRole | null {
   const directRole = normalizeRole(value);
   if (directRole) {
     return directRole;

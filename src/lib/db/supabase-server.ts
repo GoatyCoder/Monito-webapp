@@ -11,14 +11,17 @@ export async function createSupabaseServerClient() {
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: (cookieList: CookieToSet[]) =>
-          cookieList.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
+        setAll: (cookieList: CookieToSet[]) => {
+          try {
+            cookieList.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+          } catch {
+            // Nei Server Components setAll può essere invocato durante refresh sessione ma i cookie non sono scrivibili.
+          }
+        }
       }
     }
   );

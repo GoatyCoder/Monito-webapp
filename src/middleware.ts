@@ -17,11 +17,16 @@ export async function middleware(request: NextRequest) {
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookieList: CookieToSet[]) => {
+          cookieList.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value);
+          });
+
+          supabaseResponse = NextResponse.next({ request });
           cookieList.forEach(({ name, value, options }) => {
             supabaseResponse.cookies.set(name, value, options);
           });
@@ -31,17 +36,19 @@ export async function middleware(request: NextRequest) {
   );
 
   const {
-    data: { user }
+    data: { user },
+    error: authError
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
+  const isAuthenticated = Boolean(user);
 
-  if (!user && !isPublicPath) {
+  if ((authError || !isAuthenticated) && !isPublicPath) {
     return NextResponse.redirect(new URL(AUTH_PATHS.login, request.url));
   }
 
-  if (user && isPublicPath) {
+  if (isAuthenticated && isPublicPath) {
     return NextResponse.redirect(new URL(APP_PATHS.dashboard, request.url));
   }
 

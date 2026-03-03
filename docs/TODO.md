@@ -22,7 +22,7 @@
   export function createSupabaseClient() {
     return createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
     );
   }
 ```
@@ -30,18 +30,24 @@
 ```typescript
   import { createServerClient } from '@supabase/ssr';
   import { cookies } from 'next/headers';
+
   export async function createSupabaseServerClient() {
     const cookieStore = await cookies();
+
     return createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
       {
         cookies: {
           getAll: () => cookieStore.getAll(),
-          setAll: (list) => list.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          ),
-        },
+          setAll: (list) => {
+            try {
+              list.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+            } catch {
+              // Nei Server Components i cookie potrebbero non essere scrivibili.
+            }
+          }
+        }
       }
     );
   }
@@ -50,28 +56,44 @@
 ```typescript
   import { createServerClient } from '@supabase/ssr';
   import { NextResponse, type NextRequest } from 'next/server';
+
   export async function middleware(request: NextRequest) {
     let supabaseResponse = NextResponse.next({ request });
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
       {
         cookies: {
           getAll: () => request.cookies.getAll(),
-          setAll: (list) => list.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          ),
-        },
+          setAll: (list) => {
+            list.forEach(({ name, value, options }) => {
+              request.cookies.set(name, value);
+            });
+
+            supabaseResponse = NextResponse.next({ request });
+            list.forEach(({ name, value, options }) => {
+              supabaseResponse.cookies.set(name, value, options);
+            });
+          }
+        }
       }
     );
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    const isAuthenticated = Boolean(user);
+
+    if (!isAuthenticated && !request.nextUrl.pathname.startsWith('/login')) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
+
     return supabaseResponse;
   }
+
   export const config = {
-    matcher: ['/((?!_next/static|_next/image|favicon.ico|login).*)'],
+    matcher: ['/((?!_next/static|_next/image|favicon.ico).*)']
   };
 ```
 - [x] Creare `src/app/login/page.tsx`:
@@ -128,7 +150,7 @@
 - [x] Aggiornare `.env.example`:
 ```bash
   NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
-  NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="your-publishable-key"
   NEXT_PUBLIC_ENABLE_OFFLINE="true"
   # Schema operativo: configurato in src/lib/config/db.ts — aggiornare ogni 1 gennaio
 ```
@@ -175,6 +197,7 @@
 - [x] CRUD linee con campo `ordine`
 - [x] CRUD sigle lotto
 - [x] Soft delete su tutte le anagrafiche
+- [x] Refactor query anagrafiche: CRUD e fetch centralizzate in `src/lib/db/registry-queries.ts`
 
 ---
 
