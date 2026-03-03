@@ -80,8 +80,10 @@
       }
     );
 
-    const { data } = await supabase.auth.getClaims();
-    const isAuthenticated = Boolean(data?.claims?.sub);
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    const isAuthenticated = Boolean(user);
 
     if (!isAuthenticated && !request.nextUrl.pathname.startsWith('/login')) {
       return NextResponse.redirect(new URL('/login', request.url));
