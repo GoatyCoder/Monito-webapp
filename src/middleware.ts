@@ -2,9 +2,10 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { getUserRoleFromMetadata } from '@/lib/auth/user';
+import { APP_PATHS, AUTH_PATHS } from '@/lib/config/paths';
 
-const PUBLIC_PATHS = ['/login'];
-const ADMIN_PATHS = ['/anagrafiche'];
+const PUBLIC_PATHS = [AUTH_PATHS.login];
+const ADMIN_PATHS = [APP_PATHS.anagrafiche];
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -37,18 +38,18 @@ export async function middleware(request: NextRequest) {
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 
   if (!user && !isPublicPath) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(new URL(AUTH_PATHS.login, request.url));
   }
 
   if (user && isPublicPath) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(new URL(APP_PATHS.dashboard, request.url));
   }
 
   if (user && ADMIN_PATHS.some((path) => pathname.startsWith(path))) {
     const role = getUserRoleFromMetadata(user);
 
     if (role !== 'admin') {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+      return NextResponse.redirect(new URL(APP_PATHS.dashboard, request.url));
     }
   }
 

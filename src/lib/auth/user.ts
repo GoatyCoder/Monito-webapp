@@ -12,7 +12,7 @@ export type AuthUser = {
 };
 
 export function getUserRoleFromMetadata(user: User | null): UserRole {
-  const roleFromMetadata = user?.user_metadata?.role;
+  const roleFromMetadata = user?.app_metadata?.role;
 
   if (typeof roleFromMetadata !== 'string') {
     return 'viewer';

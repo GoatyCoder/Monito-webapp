@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+
+import { APP_PATHS } from '@/lib/config/paths';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
 
 export default function LoginPage() {
@@ -16,19 +18,24 @@ export default function LoginPage() {
     setError('');
     setIsSubmitting(true);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
-    if (signInError) {
-      setError(signInError.message);
+      if (signInError) {
+        setError(signInError.message);
+        return;
+      }
+
+      router.push(APP_PATHS.dashboard);
+      router.refresh();
+    } catch {
+      setError('Errore imprevisto durante il login. Riprova.');
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-
-    router.push('/dashboard');
-    router.refresh();
   };
 
   return (

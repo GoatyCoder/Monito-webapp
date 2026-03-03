@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { AUTH_PATHS } from '@/lib/config/paths';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
 import { UserRole } from '@/types/domain';
 
@@ -27,16 +28,21 @@ export function UserMenu({ displayName, role }: UserMenuProps) {
     setError('');
     setIsSigningOut(true);
 
-    const { error: signOutError } = await supabase.auth.signOut();
+    try {
+      const { error: signOutError } = await supabase.auth.signOut();
 
-    if (signOutError) {
-      setError(signOutError.message);
+      if (signOutError) {
+        setError(signOutError.message);
+        return;
+      }
+
+      router.push(AUTH_PATHS.login);
+      router.refresh();
+    } catch {
+      setError('Errore imprevisto durante la disconnessione. Riprova.');
+    } finally {
       setIsSigningOut(false);
-      return;
     }
-
-    router.push('/login');
-    router.refresh();
   };
 
   return (
