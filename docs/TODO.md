@@ -9,14 +9,14 @@
 - [x] Design system e token colori (`tailwind.config.ts`)
 - [x] Componenti placeholder: header, card linea, summary bar, FAB, form DOY
 - [x] Architettura DB documentata (schemi registry / ops_YYYY / audit)
-- [ ] Aggiungere `@supabase/supabase-js` e `@supabase/ssr` in `package.json`
-- [ ] Creare `src/lib/config/db.ts`:
+- [x] Aggiungere `@supabase/supabase-js` e `@supabase/ssr` in `package.json`
+- [x] Creare `src/lib/config/db.ts`:
 ```typescript
   export const OPS_SCHEMA      = 'ops_2025' as const;
   export const REGISTRY_SCHEMA = 'registry' as const;
   export const AUDIT_SCHEMA    = 'audit' as const;
 ```
-- [ ] Sostituire `src/lib/db/supabase-client.ts`:
+- [x] Sostituire `src/lib/db/supabase-client.ts`:
 ```typescript
   import { createBrowserClient } from '@supabase/ssr';
   export function createSupabaseClient() {
@@ -25,9 +25,8 @@
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
   }
-  export const supabase = createSupabaseClient();
 ```
-- [ ] Creare `src/lib/db/supabase-server.ts`:
+- [x] Creare `src/lib/db/supabase-server.ts`:
 ```typescript
   import { createServerClient } from '@supabase/ssr';
   import { cookies } from 'next/headers';
@@ -47,7 +46,7 @@
     );
   }
 ```
-- [ ] Creare `src/middleware.ts`:
+- [x] Creare `src/middleware.ts`:
 ```typescript
   import { createServerClient } from '@supabase/ssr';
   import { NextResponse, type NextRequest } from 'next/server';
@@ -75,7 +74,7 @@
     matcher: ['/((?!_next/static|_next/image|favicon.ico|login).*)'],
   };
 ```
-- [ ] Creare `src/app/login/page.tsx`:
+- [x] Creare `src/app/login/page.tsx`:
 ```typescript
   'use client';
   import { useState } from 'react';
@@ -125,8 +124,8 @@
     );
   }
 ```
-- [ ] Aggiornare `src/types/domain.ts` con i tipi definitivi da `docs/Schema.md §Tipi TypeScript`
-- [ ] Aggiornare `.env.example`:
+- [x] Aggiornare `src/types/domain.ts` con i tipi definitivi da `docs/Schema.md §Tipi TypeScript`
+- [x] Aggiornare `.env.example`:
 ```bash
   NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
   NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
