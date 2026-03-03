@@ -406,7 +406,7 @@ Layout gestionale composto da:
 - Barra tab orizzontale con 6 entità (`Prodotti grezzi`, `Varietà`, `Articoli`, `Imballaggi`, `Linee`, `Sigle lotto`)
 - Header sezione con titolo tab attiva, descrizione e CTA primaria `+ Nuovo record`
 - Tabella con colonne ordinabili (click su header, stato visualizzato con freccia `↑` / `↓`)
-- Colonna azioni con `Modifica` e `Disattiva/Ripristina`
+- Colonna azioni con `Modifica`, `Disattiva/Ripristina` e `Elimina definitiva`
 - Footer tabella con paginazione (`Precedente`, `Successiva`) e contatore record
 
 ### Modali Anagrafiche
@@ -415,6 +415,21 @@ Layout gestionale composto da:
 - Overlay scuro (`bg-slate-900/60`) e card centrale `surface` con border radius `xl`
 - Form su griglia responsive (1 colonna mobile, 2 desktop)
 - Azioni allineate a destra: `Annulla` (secondary), `Crea record` / `Salva modifiche` (primary)
+
+### Dialog Conferma Eliminazione Definitiva
+
+Mostrata quando l'Admin seleziona `Elimina definitiva` su un record anagrafica.
+
+```
+Icona: ⚠ colore error
+Titolo: "Conferma eliminazione definitiva"
+
+"Stai eliminando definitivamente questo record.
+L'operazione è irreversibile e applica la cascata ON DELETE CASCADE
+dove prevista nello schema database. Vuoi procedere?"
+
+[ Annulla ] secondary      [ Conferma ] danger
+```
 
 ### Stati e feedback
 

@@ -197,6 +197,7 @@
 - [x] CRUD linee con campo `ordine`
 - [x] CRUD sigle lotto
 - [x] Soft delete su tutte le anagrafiche
+- [x] Hard delete su tutte le anagrafiche (solo Admin) con dialog di conferma
 - [x] Refactor query anagrafiche: CRUD e fetch centralizzate in `src/lib/db/registry-queries.ts`
 - [x] Refactor UI anagrafiche: organizzazione in tab per entità
 - [x] Tabella gestionale con colonne ordinabili da header
@@ -228,7 +229,7 @@
 
 ## Data & Compliance
 
-- [ ] Audit log su ogni operazione (INSERT, UPDATE, soft_delete, restore, open, close, reopen)
+- [ ] Audit log su ogni operazione (INSERT, UPDATE, soft_delete, restore, delete, open, close, reopen)
 - [ ] Validazione `peso_totale = 0` bloccata lato app
 - [ ] Validazione "almeno `colli` o `peso_kg`" su scarti
 - [ ] Verifica formato `codice_pedana` = `PYY-DOY-NNNN`

@@ -10,7 +10,7 @@ Un singolo progetto Supabase con tre schemi applicativi:
 
 | Schema | Contenuto | Mutabilità |
 |---|---|---|
-| `registry` | Anagrafiche: linee, prodotti, varietà, articoli, imballaggi, sigle lotto | Soft delete, mai DELETE fisico |
+| `registry` | Anagrafiche: linee, prodotti, varietà, articoli, imballaggi, sigle lotto | Soft delete + hard delete Admin (con conferma applicativa) |
 | `ops_YYYY` | Dati operativi dell'anno: lavorazioni, pedane, scarti | Append + audit, mai DELETE fisico |
 | `audit` | Audit log immutabile | Solo INSERT |
 
@@ -35,6 +35,8 @@ is_active  boolean NOT NULL DEFAULT true
 deleted_at timestamptz
 deleted_by uuid REFERENCES auth.users(id)
 ```
+
+**Soft delete cascata:** il soft delete non propaga automaticamente ai record figli. Per disattivazioni a cascata va implementata una logica applicativa esplicita.
 
 ---
 
@@ -80,8 +82,8 @@ nome                       text NOT NULL
 descrizione                text
 peso_per_collo             numeric NOT NULL
 peso_variabile             boolean DEFAULT false
-vincolo_prodotto_grezzo_id uuid REFERENCES registry.prodotti_grezzi(id)
-vincolo_varieta_id         uuid REFERENCES registry.varieta(id)
+vincolo_prodotto_grezzo_id uuid REFERENCES registry.prodotti_grezzi(id) ON DELETE CASCADE
+vincolo_varieta_id         uuid REFERENCES registry.varieta(id) ON DELETE CASCADE
 is_active                  boolean NOT NULL DEFAULT true
 deleted_at                 timestamptz
 deleted_by                 uuid REFERENCES auth.users(id)
@@ -136,8 +138,8 @@ updated_at         timestamptz
 updated_by         uuid REFERENCES auth.users(id)
 codice             text NOT NULL UNIQUE
 produttore         text NOT NULL
-prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id)
-varieta_id         uuid NOT NULL REFERENCES registry.varieta(id)
+prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id) ON DELETE CASCADE
+varieta_id         uuid NOT NULL REFERENCES registry.varieta(id) ON DELETE CASCADE
 campo              text
 ```
 
@@ -155,11 +157,11 @@ created_at                timestamptz DEFAULT now()
 created_by                uuid NOT NULL REFERENCES auth.users(id)
 updated_at                timestamptz
 updated_by                uuid REFERENCES auth.users(id)
-linea_id                  uuid NOT NULL REFERENCES registry.linee(id)
-sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice)
+linea_id                  uuid NOT NULL REFERENCES registry.linee(id) ON DELETE CASCADE
+sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice) ON DELETE CASCADE
 data_ingresso             date NOT NULL
-articolo_id               uuid NOT NULL REFERENCES registry.articoli(id)
-imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id)
+articolo_id               uuid NOT NULL REFERENCES registry.articoli(id) ON DELETE CASCADE
+imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id) ON DELETE CASCADE
 stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta'
 aperta_at                 timestamptz NOT NULL DEFAULT now()
 chiusa_at                 timestamptz
@@ -178,7 +180,7 @@ created_by     uuid NOT NULL REFERENCES auth.users(id)
 updated_at     timestamptz
 updated_by     uuid REFERENCES auth.users(id)
 codice_pedana  text NOT NULL UNIQUE
-lavorazione_id uuid NOT NULL REFERENCES ops_YYYY.lavorazioni(id)
+lavorazione_id uuid NOT NULL REFERENCES ops_YYYY.lavorazioni(id) ON DELETE CASCADE
 numero_colli   integer NOT NULL
 peso_totale    numeric NOT NULL
 registrata_at  timestamptz NOT NULL DEFAULT now()
@@ -201,7 +203,7 @@ created_at    timestamptz DEFAULT now()
 created_by    uuid NOT NULL REFERENCES auth.users(id)
 updated_at    timestamptz
 updated_by    uuid REFERENCES auth.users(id)
-sigla_lotto   text NOT NULL REFERENCES registry.sigle_lotto(codice)
+sigla_lotto   text NOT NULL REFERENCES registry.sigle_lotto(codice) ON DELETE CASCADE
 data_ingresso date NOT NULL
 colli         integer
 peso_kg       numeric
@@ -246,14 +248,14 @@ actor_name  text NOT NULL
 schema_name text NOT NULL
 table_name  text NOT NULL
 record_id   uuid NOT NULL
-action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','open','close','reopen'))
+action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','delete','open','close','reopen'))
 field_name  text
 old_value   jsonb
 new_value   jsonb
 reason      text
 ```
 
-**Regole:** solo INSERT permesso (enforced via RLS). Nessun `updated_*`, nessun soft delete. `actor_name` è denormalizzato — snapshot al momento dell'azione. Accessibile in lettura solo all'Admin.
+**Regole:** solo INSERT permesso (enforced via RLS). Nessun `updated_*`, nessun soft delete. L'azione `delete` traccia eliminazioni fisiche definitive. `actor_name` è denormalizzato — snapshot al momento dell'azione. Accessibile in lettura solo all'Admin.
 
 ---
 
@@ -389,7 +391,7 @@ export type AuditLog = {
   schemaName: string;
   tableName: string;
   recordId: string;
-  action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'open' | 'close' | 'reopen';
+  action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'delete' | 'open' | 'close' | 'reopen';
   fieldName: string | null;
   oldValue: unknown;
   newValue: unknown;
@@ -444,8 +446,8 @@ CREATE TABLE registry.articoli (
   descrizione                text,
   peso_per_collo             numeric NOT NULL,
   peso_variabile             boolean DEFAULT false,
-  vincolo_prodotto_grezzo_id uuid REFERENCES registry.prodotti_grezzi(id),
-  vincolo_varieta_id         uuid REFERENCES registry.varieta(id),
+  vincolo_prodotto_grezzo_id uuid REFERENCES registry.prodotti_grezzi(id) ON DELETE CASCADE,
+  vincolo_varieta_id         uuid REFERENCES registry.varieta(id) ON DELETE CASCADE,
   is_active                  boolean NOT NULL DEFAULT true,
   deleted_at                 timestamptz,
   deleted_by                 uuid REFERENCES auth.users(id)
@@ -490,8 +492,8 @@ CREATE TABLE registry.sigle_lotto (
   updated_by         uuid REFERENCES auth.users(id),
   codice             text NOT NULL UNIQUE,
   produttore         text NOT NULL,
-  prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id),
-  varieta_id         uuid NOT NULL REFERENCES registry.varieta(id),
+  prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id) ON DELETE CASCADE,
+  varieta_id         uuid NOT NULL REFERENCES registry.varieta(id) ON DELETE CASCADE,
   campo              text
 );
 ```
@@ -508,11 +510,11 @@ CREATE TABLE ops_2025.lavorazioni (
   created_by                uuid NOT NULL REFERENCES auth.users(id),
   updated_at                timestamptz,
   updated_by                uuid REFERENCES auth.users(id),
-  linea_id                  uuid NOT NULL REFERENCES registry.linee(id),
-  sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice),
+  linea_id                  uuid NOT NULL REFERENCES registry.linee(id) ON DELETE CASCADE,
+  sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice) ON DELETE CASCADE,
   data_ingresso             date NOT NULL,
-  articolo_id               uuid NOT NULL REFERENCES registry.articoli(id),
-  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id),
+  articolo_id               uuid NOT NULL REFERENCES registry.articoli(id) ON DELETE CASCADE,
+  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id) ON DELETE CASCADE,
   stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta',
   aperta_at                 timestamptz NOT NULL DEFAULT now(),
   chiusa_at                 timestamptz,
@@ -526,7 +528,7 @@ CREATE TABLE ops_2025.pedane (
   updated_at     timestamptz,
   updated_by     uuid REFERENCES auth.users(id),
   codice_pedana  text NOT NULL UNIQUE,
-  lavorazione_id uuid NOT NULL REFERENCES ops_2025.lavorazioni(id),
+  lavorazione_id uuid NOT NULL REFERENCES ops_2025.lavorazioni(id) ON DELETE CASCADE,
   numero_colli   integer NOT NULL,
   peso_totale    numeric NOT NULL,
   registrata_at  timestamptz NOT NULL DEFAULT now(),
@@ -544,7 +546,7 @@ CREATE TABLE ops_2025.scarti (
   created_by    uuid NOT NULL REFERENCES auth.users(id),
   updated_at    timestamptz,
   updated_by    uuid REFERENCES auth.users(id),
-  sigla_lotto   text NOT NULL REFERENCES registry.sigle_lotto(codice),
+  sigla_lotto   text NOT NULL REFERENCES registry.sigle_lotto(codice) ON DELETE CASCADE,
   data_ingresso date NOT NULL,
   colli         integer,
   peso_kg       numeric,
@@ -598,7 +600,7 @@ CREATE TABLE audit.log (
   schema_name text NOT NULL,
   table_name  text NOT NULL,
   record_id   uuid NOT NULL,
-  action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','open','close','reopen')),
+  action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','delete','open','close','reopen')),
   field_name  text,
   old_value   jsonb,
   new_value   jsonb,

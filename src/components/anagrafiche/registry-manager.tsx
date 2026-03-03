@@ -5,6 +5,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 
 import { REGISTRY_SCHEMA } from '@/lib/config/db';
 import {
   createRegistryRow,
+  deleteRegistryRow,
   fetchCurrentUser,
   fetchRegistryRowById,
   fetchRegistryTable,
@@ -97,6 +98,19 @@ type ModalState =
     }
   | {
       mode: 'edit';
+      table: RegistryTable;
+      row: RegistryRecord;
+    }
+  | null;
+
+type ConfirmationState =
+  | {
+      kind: 'toggle-active';
+      table: RegistryTable;
+      row: RegistryRecord;
+    }
+  | {
+      kind: 'hard-delete';
       table: RegistryTable;
       row: RegistryRecord;
     }
@@ -394,6 +408,7 @@ export function RegistryManager() {
     sigle_lotto: 1
   });
   const [userIdentity, setUserIdentity] = useState<{ userId: string; actorName: string } | null>(null);
+  const [confirmationState, setConfirmationState] = useState<ConfirmationState>(null);
 
   const supabase = useMemo(() => createSupabaseClient(), []);
 
@@ -516,7 +531,7 @@ export function RegistryManager() {
   async function logAuditEvent(params: {
     tableName: RegistryTable;
     recordId: string;
-    action: 'insert' | 'update' | 'soft_delete' | 'restore';
+    action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'delete';
     oldValue: Record<string, unknown> | null;
     newValue: Record<string, unknown> | null;
   }) {
@@ -641,6 +656,54 @@ export function RegistryManager() {
 
     upsertLocalRow(table, response.data as RegistryRecord);
     setStatusMessage(shouldRestore ? 'Record ripristinato.' : 'Record disattivato.');
+  }
+
+  async function hardDeleteRecord(table: RegistryTable, row: RegistryRecord) {
+    if (!userIdentity) {
+      setStatusMessage('Utente non disponibile. Ricarica la pagina.');
+      return;
+    }
+
+    const existing = await fetchRegistryRowById(supabase, table, row.id);
+    if (existing.error || !existing.data) {
+      setStatusMessage(`Errore lettura record ${table}: ${existing.error?.message ?? 'sconosciuto'}`);
+      return;
+    }
+
+    const response = await deleteRegistryRow(supabase, table, row.id);
+    if (response.error || !response.data) {
+      setStatusMessage(`Errore eliminazione definitiva ${table}: ${response.error?.message ?? 'sconosciuto'}`);
+      return;
+    }
+
+    await logAuditEvent({
+      tableName: table,
+      recordId: row.id,
+      action: 'delete',
+      oldValue: existing.data,
+      newValue: null
+    });
+
+    setData((currentData) => {
+      const removeById = <T extends RegistryRecord>(rows: T[]) => rows.filter((item) => item.id !== row.id);
+      switch (table) {
+        case 'prodotti_grezzi':
+          return { ...currentData, prodottiGrezzi: removeById(currentData.prodottiGrezzi) };
+        case 'varieta':
+          return { ...currentData, varieta: removeById(currentData.varieta) };
+        case 'articoli':
+          return { ...currentData, articoli: removeById(currentData.articoli) };
+        case 'imballaggi_secondari':
+          return { ...currentData, imballaggi: removeById(currentData.imballaggi) };
+        case 'linee':
+          return { ...currentData, linee: removeById(currentData.linee) };
+        case 'sigle_lotto':
+          return { ...currentData, sigleLotto: removeById(currentData.sigleLotto) };
+      }
+    });
+
+    setStatusMessage('Record eliminato definitivamente.');
+    await loadRegistryData();
   }
 
   function extractPayload(table: RegistryTable, formData: FormData): Record<string, unknown> {
@@ -1020,12 +1083,17 @@ export function RegistryManager() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            void toggleRecordActive(activeTab, row);
-                          }}
+                          onClick={() => setConfirmationState({ kind: 'toggle-active', table: activeTab, row })}
                           className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium"
                         >
                           {row.is_active ? 'Disattiva' : 'Ripristina'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmationState({ kind: 'hard-delete', table: activeTab, row })}
+                          className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700"
+                        >
+                          Elimina definitiva
                         </button>
                       </div>
                     </td>
@@ -1077,6 +1145,53 @@ export function RegistryManager() {
               </button>
             </div>
           </form>
+        </ModalShell>
+      ) : null}
+
+      {confirmationState ? (
+        <ModalShell
+          title={confirmationState.kind === 'hard-delete' ? 'Conferma eliminazione definitiva' : 'Conferma operazione'}
+          onClose={() => setConfirmationState(null)}
+        >
+          <div className="space-y-4">
+            {confirmationState.kind === 'hard-delete' ? (
+              <p className="text-sm text-slate-700">
+                Stai per eliminare definitivamente questo record. L&apos;operazione è irreversibile e, se configurato nel database,
+                verrà applicata anche la cascata ON DELETE CASCADE ai dati collegati. Vuoi procedere?
+              </p>
+            ) : (
+              <p className="text-sm text-slate-700">
+                Confermi di voler {confirmationState.row.is_active ? 'disattivare' : 'ripristinare'} il record selezionato?
+              </p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmationState(null)}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const currentConfirmation = confirmationState;
+                  setConfirmationState(null);
+                  if (currentConfirmation.kind === 'hard-delete') {
+                    void hardDeleteRecord(currentConfirmation.table, currentConfirmation.row);
+                    return;
+                  }
+
+                  void toggleRecordActive(currentConfirmation.table, currentConfirmation.row);
+                }}
+                className={`rounded-md px-4 py-2 text-sm font-semibold text-white ${
+                  confirmationState.kind === 'hard-delete' ? 'bg-red-700' : 'bg-slate-900'
+                }`}
+              >
+                Conferma
+              </button>
+            </div>
+          </div>
         </ModalShell>
       ) : null}
     </section>

@@ -103,9 +103,9 @@ Un Operatore può gestire più linee da una singola postazione. Più Operatori p
 Stampata via `react-to-print`. Contenuto: Prodotto Grezzo, Varietà, Articolo, Colli, Peso, Lotto ingresso, Data confezionamento, `codice_pedana` (in grande).
 
 ### Anagrafiche (Admin)
-Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto. Nessuna cancellazione fisica — soft delete con `is_active` (`false` = disattivato), tracciato con `deleted_at` e `deleted_by`. Vedi schema completo in `SCHEMA.md`.
+Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto. Disponibili sia soft delete (`is_active = false`, `deleted_at`, `deleted_by`) sia eliminazione fisica definitiva riservata all'Admin con dialog di conferma. L'eliminazione definitiva usa vincoli `ON DELETE CASCADE` dove definiti nello schema. Vedi dettagli in `SCHEMA.md`.
 
-Interfaccia Admin v1: tab per entità, tabella ordinabile cliccando sull'header, paginazione, modale di creazione/modifica, azione di disattivazione/ripristino inline.
+Interfaccia Admin v1: tab per entità, tabella ordinabile cliccando sull'header, paginazione, modale di creazione/modifica, azione inline di disattivazione/ripristino e azione di eliminazione definitiva con conferma.
 
 ### Report
 Filtro per data o intervallo. Export PDF, Excel, CSV.
@@ -132,13 +132,13 @@ Filtro per data o intervallo. Export PDF, Excel, CSV.
 | Scarto senza lavorazioni aperte | Permesso. L'Operatore inserisce sigla lotto + data ingresso. |
 | Reset totali cruscotto | Totali barra riepilogo riferiti al giorno corrente (dalla mezzanotte). |
 | Lavorazione aperta il giorno precedente | Resta visibile nel cruscotto fino a chiusura manuale. Attribuita alla data di apertura nei report. |
-| Cancellazione record | Nessun record cancellato fisicamente. Anagrafiche disattivabili via soft delete (`is_active`, `deleted_at`, `deleted_by`). Dati produttivi modificabili solo con traccia audit. |
+| Cancellazione record | Nelle anagrafiche sono disponibili soft delete e hard delete. L'hard delete è riservato all'Admin, richiede dialog di conferma ed esegue cascata secondo i vincoli `ON DELETE CASCADE` del DB. I dati operativi restano tracciati in audit. |
 
 ---
 
 ## Audit Log
 
-Copre tutte le tabelle: anagrafiche, lavorazioni, pedane, scarti. Ogni INSERT, UPDATE, soft delete e restore genera una riga. Immutabile: solo INSERT permesso, mai UPDATE o DELETE. Accessibile in lettura solo all'Admin. Vedi struttura completa in `SCHEMA.md §audit_log`.
+Copre tutte le tabelle: anagrafiche, lavorazioni, pedane, scarti. Ogni INSERT, UPDATE, soft delete, restore e hard delete genera una riga. Immutabile: solo INSERT permesso, mai UPDATE o DELETE. Accessibile in lettura solo all'Admin. Vedi struttura completa in `SCHEMA.md §audit_log`.
 
 ---
 
