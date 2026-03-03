@@ -1,21 +1,46 @@
-# SCHEMA.md – Database Schema
+# Schema.md – Database e Tipi
 **Progetto:** Monito  
-**Riferimenti:** `PRD.md`, `DESIGN.md`
+**Riferimenti:** `PRD.md`, `Design.md`
 
 ---
 
-## Convenzioni
+## Architettura
 
-- Ogni tabella (tranne `audit_log`) ha `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at timestamptz DEFAULT now()`, `created_by uuid NOT NULL`, `updated_at`, `updated_by`
-- Soft delete best practice sulle anagrafiche (`prodotti_grezzi`, `varieta`, `articoli`, `imballaggi_secondari`, `linee`, `sigle_lotto`): `is_active boolean DEFAULT true`, `deleted_at`, `deleted_by`
-- I dati produttivi (lavorazioni, pedane, scarti) sono immutabili: ogni modifica produce un evento in `audit_log`
-- RLS attiva su tutte le tabelle
+Un singolo progetto Supabase con tre schemi applicativi:
+
+| Schema | Contenuto | Mutabilità |
+|---|---|---|
+| `registry` | Anagrafiche: linee, prodotti, varietà, articoli, imballaggi, sigle lotto | Soft delete, mai DELETE fisico |
+| `ops_YYYY` | Dati operativi dell'anno: lavorazioni, pedane, scarti | Append + audit, mai DELETE fisico |
+| `audit` | Audit log immutabile | Solo INSERT |
+
+Lo schema operativo attivo è `OPS_SCHEMA` in `src/lib/config/db.ts` — aggiornare ogni 1 gennaio.
 
 ---
 
-## Tabelle
+## Convenzioni comuni
 
-### `prodotti_grezzi`
+Tutte le tabelle applicative (eccetto `audit.log`) hanno:
+```sql
+id         uuid PRIMARY KEY DEFAULT gen_random_uuid()
+created_at timestamptz DEFAULT now()
+created_by uuid NOT NULL REFERENCES auth.users(id)
+updated_at timestamptz
+updated_by uuid REFERENCES auth.users(id)
+```
+
+Le anagrafiche in `registry` hanno inoltre:
+```sql
+is_active  boolean NOT NULL DEFAULT true
+deleted_at timestamptz
+deleted_by uuid REFERENCES auth.users(id)
+```
+
+---
+
+## Schema `registry`
+
+### `registry.prodotti_grezzi`
 ```sql
 id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at  timestamptz DEFAULT now()
@@ -29,65 +54,65 @@ deleted_at  timestamptz
 deleted_by  uuid REFERENCES auth.users(id)
 ```
 
-### `varieta`
+### `registry.varieta`
 ```sql
-id                  uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at          timestamptz DEFAULT now()
-created_by          uuid NOT NULL REFERENCES auth.users(id)
-updated_at          timestamptz
-updated_by          uuid REFERENCES auth.users(id)
-nome                text NOT NULL
-descrizione         text
-prodotto_grezzo_id  uuid NOT NULL REFERENCES prodotti_grezzi(id) ON DELETE CASCADE
-is_active            boolean NOT NULL DEFAULT true
-deleted_at           timestamptz
-deleted_by           uuid REFERENCES auth.users(id)
+id                 uuid PRIMARY KEY DEFAULT gen_random_uuid()
+created_at         timestamptz DEFAULT now()
+created_by         uuid NOT NULL REFERENCES auth.users(id)
+updated_at         timestamptz
+updated_by         uuid REFERENCES auth.users(id)
+nome               text NOT NULL
+descrizione        text
+prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id) ON DELETE CASCADE
+is_active          boolean NOT NULL DEFAULT true
+deleted_at         timestamptz
+deleted_by         uuid REFERENCES auth.users(id)
 ```
 
-### `articoli`
+### `registry.articoli`
 ```sql
-id                          uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at                  timestamptz DEFAULT now()
-created_by                  uuid NOT NULL REFERENCES auth.users(id)
-updated_at                  timestamptz
-updated_by                  uuid REFERENCES auth.users(id)
-nome                        text NOT NULL
-descrizione                 text
-peso_per_collo              numeric NOT NULL         -- kg
-peso_variabile              boolean DEFAULT false    -- se true: peso pedana sovrascrivibile
-vincolo_prodotto_grezzo_id  uuid REFERENCES prodotti_grezzi(id)  -- nullable
-vincolo_varieta_id          uuid REFERENCES varieta(id)          -- nullable
-is_active                    boolean NOT NULL DEFAULT true
-deleted_at                   timestamptz
-deleted_by                   uuid REFERENCES auth.users(id)
+id                         uuid PRIMARY KEY DEFAULT gen_random_uuid()
+created_at                 timestamptz DEFAULT now()
+created_by                 uuid NOT NULL REFERENCES auth.users(id)
+updated_at                 timestamptz
+updated_by                 uuid REFERENCES auth.users(id)
+nome                       text NOT NULL
+descrizione                text
+peso_per_collo             numeric NOT NULL
+peso_variabile             boolean DEFAULT false
+vincolo_prodotto_grezzo_id uuid REFERENCES registry.prodotti_grezzi(id)
+vincolo_varieta_id         uuid REFERENCES registry.varieta(id)
+is_active                  boolean NOT NULL DEFAULT true
+deleted_at                 timestamptz
+deleted_by                 uuid REFERENCES auth.users(id)
 ```
 
-**Logica vincoli articolo:**
+**Logica vincoli:**
 - Nessun vincolo → usabile con qualsiasi lotto
 - Solo `vincolo_prodotto_grezzo_id` → usabile solo con lotti di quel prodotto grezzo
 - `vincolo_varieta_id` → usabile solo con lotti di quella varietà (implica vincolo sul prodotto grezzo padre)
 
-Il sistema filtra gli articoli disponibili all'apertura della lavorazione. Articoli incompatibili non compaiono — nessun messaggio di errore.
+Articoli incompatibili non compaiono nel dropdown — nessun messaggio di errore.
 
-### `imballaggi_secondari`
+### `registry.imballaggi_secondari`
 ```sql
-id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at  timestamptz DEFAULT now()
-created_by  uuid NOT NULL REFERENCES auth.users(id)
-updated_at  timestamptz
-updated_by  uuid REFERENCES auth.users(id)
-nome        text NOT NULL        -- es. "Cartone 40x60", "Bins", "Cassa di legno"
-descrizione text
-tara_kg     numeric              -- tara imballaggio in kg (per usi futuri)
-lunghezza_cm numeric             -- lunghezza imballaggio
-larghezza_cm numeric             -- larghezza imballaggio
-altezza_cm   numeric             -- altezza imballaggio
-is_active   boolean NOT NULL DEFAULT true
-deleted_at  timestamptz
-deleted_by  uuid REFERENCES auth.users(id)
+id           uuid PRIMARY KEY DEFAULT gen_random_uuid()
+created_at   timestamptz DEFAULT now()
+created_by   uuid NOT NULL REFERENCES auth.users(id)
+updated_at   timestamptz
+updated_by   uuid REFERENCES auth.users(id)
+nome         text NOT NULL
+descrizione  text
+tara_kg      numeric
+lunghezza_cm numeric
+larghezza_cm numeric
+altezza_cm   numeric
+is_active    boolean NOT NULL DEFAULT true
+deleted_at   timestamptz
+deleted_by   uuid REFERENCES auth.users(id)
 ```
 
-### `linee`
+### `registry.linee`
 ```sql
 id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at  timestamptz DEFAULT now()
@@ -99,261 +124,572 @@ descrizione text
 is_active   boolean NOT NULL DEFAULT true
 deleted_at  timestamptz
 deleted_by  uuid REFERENCES auth.users(id)
-ordine      integer              -- posizione nel cruscotto, configurabile da Admin
+ordine      integer
 ```
 
-### `sigle_lotto`
+### `registry.sigle_lotto`
 ```sql
-id                  uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at          timestamptz DEFAULT now()
-created_by          uuid NOT NULL REFERENCES auth.users(id)
-updated_at          timestamptz
-updated_by          uuid REFERENCES auth.users(id)
-codice              text NOT NULL UNIQUE   -- es. "2012", inserito manualmente
-produttore          text NOT NULL
-prodotto_grezzo_id  uuid NOT NULL REFERENCES prodotti_grezzi(id)
-varieta_id          uuid NOT NULL REFERENCES varieta(id)
-campo               text                  -- identificativo campo/appezzamento
+id                 uuid PRIMARY KEY DEFAULT gen_random_uuid()
+created_at         timestamptz DEFAULT now()
+created_by         uuid NOT NULL REFERENCES auth.users(id)
+updated_at         timestamptz
+updated_by         uuid REFERENCES auth.users(id)
+codice             text NOT NULL UNIQUE
+produttore         text NOT NULL
+prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id)
+varieta_id         uuid NOT NULL REFERENCES registry.varieta(id)
+campo              text
 ```
 
-### `lotti_ingresso` (deprecata in UI v1)
+---
 
-> Nota: la UI v1 non espone più una anagrafica dedicata `lotti_ingresso`.
-> Il lotto operativo viene identificato da `sigla_lotto` + `data_ingresso` dentro `lavorazioni`; il DOY è sempre derivabile dalla data.
+## Schema `ops_YYYY`
 
-### `lavorazioni`
+Le tabelle esistono in ogni schema annuale (`ops_2025`, `ops_2026`, …).  
+I riferimenti a `registry.*` funzionano cross-schema — stesso database Supabase.
+
+### `ops_YYYY.lavorazioni`
 ```sql
 id                        uuid PRIMARY KEY DEFAULT gen_random_uuid()
 created_at                timestamptz DEFAULT now()
 created_by                uuid NOT NULL REFERENCES auth.users(id)
 updated_at                timestamptz
 updated_by                uuid REFERENCES auth.users(id)
-linea_id                  uuid NOT NULL REFERENCES linee(id)
-sigla_lotto               text NOT NULL REFERENCES sigle_lotto(codice) -- sigla valida da anagrafica
-data_ingresso             date NOT NULL            -- inserita in apertura lavorazione
-articolo_id               uuid NOT NULL REFERENCES articoli(id)
-imballaggio_secondario_id uuid NOT NULL REFERENCES imballaggi_secondari(id)
+linea_id                  uuid NOT NULL REFERENCES registry.linee(id)
+sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice)
+data_ingresso             date NOT NULL
+articolo_id               uuid NOT NULL REFERENCES registry.articoli(id)
+imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id)
 stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta'
 aperta_at                 timestamptz NOT NULL DEFAULT now()
-chiusa_at                 timestamptz          -- NULL = lavorazione aperta
+chiusa_at                 timestamptz
 aperta_da                 uuid NOT NULL REFERENCES auth.users(id)
 ```
 
-**Nota semantica audit vs ciclo lavorazione:**
-- `created_at` / `created_by`: metadati tecnici di creazione riga
-- `aperta_at` / `aperta_da`: inizio operativo della lavorazione (dominio)
-- `chiusa_at`: fine operativa (NULL finché aperta)
+**Nota semantica:** `created_at/created_by` sono metadati tecnici. `aperta_at/aperta_da` sono il dominio operativo — mantenuti separati per tracciare correttamente le riaperture.
 
-`aperta_da` è mantenuto separato da `created_by` perché rappresenta l'attore di apertura/reapertura operativa, non solo il creatore tecnico del record.
+Su una stessa linea possono coesistere più lavorazioni aperte (caso eccezionale, richiede conferma esplicita). Vedi `PRD.md §Comportamenti di Sistema`.
 
-> Su una stessa linea possono coesistere più lavorazioni aperte (caso eccezionale). Richiede conferma esplicita dell'Operatore. Vedi `DESIGN.md §Modali`.
-
-### `pedane`
+### `ops_YYYY.pedane`
 ```sql
-id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at      timestamptz DEFAULT now()
-created_by      uuid NOT NULL REFERENCES auth.users(id)
-updated_at      timestamptz
-updated_by      uuid REFERENCES auth.users(id)
-codice_pedana   text NOT NULL UNIQUE   -- formato PYY-DOY-NNNN, es. "P26-051-0042". Generato da trigger.
-lavorazione_id  uuid NOT NULL REFERENCES lavorazioni(id)
-numero_colli    integer NOT NULL
-peso_totale     numeric NOT NULL       -- calcolato o sovrascritto dall'Operatore
-registrata_at   timestamptz NOT NULL DEFAULT now()
-registrata_da   uuid NOT NULL REFERENCES auth.users(id)
+id             uuid PRIMARY KEY DEFAULT gen_random_uuid()
+created_at     timestamptz DEFAULT now()
+created_by     uuid NOT NULL REFERENCES auth.users(id)
+updated_at     timestamptz
+updated_by     uuid REFERENCES auth.users(id)
+codice_pedana  text NOT NULL UNIQUE
+lavorazione_id uuid NOT NULL REFERENCES ops_YYYY.lavorazioni(id)
+numero_colli   integer NOT NULL
+peso_totale    numeric NOT NULL
+registrata_at  timestamptz NOT NULL DEFAULT now()
+registrata_da  uuid NOT NULL REFERENCES auth.users(id)
 ```
 
-**Trigger generazione `codice_pedana`:**
+**Formato `codice_pedana`:** `PYY-DOY-NNNN` (es. `P26-051-0042`). Generato da trigger DB.
+
+**Logica peso:**
+- `peso_variabile = false` → `peso_totale = numero_colli × peso_per_collo`, calcolato lato app, non modificabile
+- `peso_variabile = true` → app propone la stima, operatore può sovrascrivere con avviso visivo
+- `peso_totale = 0` bloccato lato app
+
+### `ops_YYYY.scarti`
 ```sql
-CREATE OR REPLACE FUNCTION generate_codice_pedana()
+id            uuid PRIMARY KEY DEFAULT gen_random_uuid()
+created_at    timestamptz DEFAULT now()
+created_by    uuid NOT NULL REFERENCES auth.users(id)
+updated_at    timestamptz
+updated_by    uuid REFERENCES auth.users(id)
+sigla_lotto   text NOT NULL REFERENCES registry.sigle_lotto(codice)
+data_ingresso date NOT NULL
+colli         integer
+peso_kg       numeric
+registrato_at timestamptz NOT NULL DEFAULT now()
+registrato_da uuid NOT NULL REFERENCES auth.users(id)
+```
+
+Almeno uno tra `colli` e `peso_kg` obbligatorio (validazione lato app). I due campi sono indipendenti.
+
+**Formula % scarto per lotto:**
+```sql
+WITH prodotto AS (
+  SELECT COALESCE(SUM(p.peso_totale), 0) AS prodotto_kg
+  FROM ops_YYYY.lavorazioni lav
+  LEFT JOIN ops_YYYY.pedane p ON p.lavorazione_id = lav.id
+  WHERE lav.sigla_lotto = :sigla AND lav.data_ingresso = :data
+),
+scarto AS (
+  SELECT COALESCE(SUM(s.peso_kg), 0) AS scarto_kg
+  FROM ops_YYYY.scarti s
+  WHERE s.sigla_lotto = :sigla AND s.data_ingresso = :data
+)
+SELECT
+  scarto.scarto_kg,
+  prodotto.prodotto_kg,
+  ROUND(
+    scarto.scarto_kg / NULLIF(prodotto.prodotto_kg + scarto.scarto_kg, 0) * 100, 2
+  ) AS percentuale_scarto
+FROM prodotto CROSS JOIN scarto;
+```
+
+---
+
+## Schema `audit`
+
+### `audit.log`
+```sql
+id          uuid PRIMARY KEY DEFAULT gen_random_uuid()
+event_at    timestamptz NOT NULL DEFAULT now()
+actor_id    uuid NOT NULL REFERENCES auth.users(id)
+actor_name  text NOT NULL
+schema_name text NOT NULL
+table_name  text NOT NULL
+record_id   uuid NOT NULL
+action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','open','close','reopen'))
+field_name  text
+old_value   jsonb
+new_value   jsonb
+reason      text
+```
+
+**Regole:** solo INSERT permesso (enforced via RLS). Nessun `updated_*`, nessun soft delete. `actor_name` è denormalizzato — snapshot al momento dell'azione. Accessibile in lettura solo all'Admin.
+
+---
+
+## Relazioni
+```
+registry.prodotti_grezzi
+  └── registry.varieta
+        └── registry.sigle_lotto
+              ├── ops_YYYY.lavorazioni
+              │     └── ops_YYYY.pedane
+              └── ops_YYYY.scarti
+
+registry.articoli
+  ├── vincolo_prodotto_grezzo_id → registry.prodotti_grezzi (nullable)
+  └── vincolo_varieta_id         → registry.varieta (nullable)
+
+ops_YYYY.lavorazioni
+  ├── linea_id                  → registry.linee
+  ├── sigla_lotto               → registry.sigle_lotto(codice)
+  ├── articolo_id               → registry.articoli
+  └── imballaggio_secondario_id → registry.imballaggi_secondari
+```
+
+---
+
+## Tipi TypeScript
+
+File: `src/types/domain.ts`
+```typescript
+export type UserRole = 'admin' | 'operatore' | 'viewer';
+
+export type EntityAuditFields = {
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+export type SoftDeletable = {
+  isActive: boolean;
+  deletedAt: string | null;
+  deletedBy: string | null;
+};
+
+// registry
+export type ProdottoGrezzo = EntityAuditFields & SoftDeletable & {
+  id: string;
+  nome: string;
+  descrizione: string | null;
+};
+
+export type Varieta = EntityAuditFields & SoftDeletable & {
+  id: string;
+  nome: string;
+  descrizione: string | null;
+  prodottoGrezzoId: string;
+};
+
+export type Articolo = EntityAuditFields & SoftDeletable & {
+  id: string;
+  nome: string;
+  descrizione: string | null;
+  pesoPerCollo: number;
+  pesoVariabile: boolean;
+  vincoloProdottoGrezzoId: string | null;
+  vincoloVarietaId: string | null;
+};
+
+export type ImballaggioSecondario = EntityAuditFields & SoftDeletable & {
+  id: string;
+  nome: string;
+  descrizione: string | null;
+  taraKg: number | null;
+  lunghezzaCm: number | null;
+  larghezzaCm: number | null;
+  altezzaCm: number | null;
+};
+
+export type Linea = EntityAuditFields & SoftDeletable & {
+  id: string;
+  nome: string;
+  descrizione: string | null;
+  ordine: number | null;
+};
+
+export type SiglaLotto = EntityAuditFields & {
+  id: string;
+  codice: string;
+  produttore: string;
+  prodottoGrezzoId: string;
+  varietaId: string;
+  campo: string | null;
+};
+
+// ops_YYYY
+export type Lavorazione = EntityAuditFields & {
+  id: string;
+  lineaId: string;
+  siglaLotto: string;
+  dataIngresso: string;
+  articoloId: string;
+  imballaggioSecondarioId: string;
+  stato: 'aperta' | 'chiusa';
+  apertaAt: string;
+  chiusaAt: string | null;
+  apertaDa: string;
+};
+
+export type Pedana = EntityAuditFields & {
+  id: string;
+  codicePedana: string;
+  lavorazioneId: string;
+  numeroColli: number;
+  pesoTotale: number;
+  registrataDa: string;
+};
+
+export type Scarto = EntityAuditFields & {
+  id: string;
+  siglaLotto: string;
+  dataIngresso: string;
+  colli: number | null;
+  pesoKg: number | null;
+  registratoDa: string;
+};
+
+// audit
+export type AuditLog = {
+  id: string;
+  eventAt: string;
+  actorId: string;
+  actorName: string;
+  schemaName: string;
+  tableName: string;
+  recordId: string;
+  action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'open' | 'close' | 'reopen';
+  fieldName: string | null;
+  oldValue: unknown;
+  newValue: unknown;
+  reason: string | null;
+};
+```
+
+---
+
+## Migration SQL
+
+Eseguire su **Supabase → SQL Editor** nell'ordine indicato.
+
+### Blocco 1 — Schema registry
+```sql
+CREATE SCHEMA registry;
+
+CREATE TABLE registry.prodotti_grezzi (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at  timestamptz DEFAULT now(),
+  created_by  uuid NOT NULL REFERENCES auth.users(id),
+  updated_at  timestamptz,
+  updated_by  uuid REFERENCES auth.users(id),
+  nome        text NOT NULL,
+  descrizione text,
+  is_active   boolean NOT NULL DEFAULT true,
+  deleted_at  timestamptz,
+  deleted_by  uuid REFERENCES auth.users(id)
+);
+
+CREATE TABLE registry.varieta (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at         timestamptz DEFAULT now(),
+  created_by         uuid NOT NULL REFERENCES auth.users(id),
+  updated_at         timestamptz,
+  updated_by         uuid REFERENCES auth.users(id),
+  nome               text NOT NULL,
+  descrizione        text,
+  prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id) ON DELETE CASCADE,
+  is_active          boolean NOT NULL DEFAULT true,
+  deleted_at         timestamptz,
+  deleted_by         uuid REFERENCES auth.users(id)
+);
+
+CREATE TABLE registry.articoli (
+  id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at                 timestamptz DEFAULT now(),
+  created_by                 uuid NOT NULL REFERENCES auth.users(id),
+  updated_at                 timestamptz,
+  updated_by                 uuid REFERENCES auth.users(id),
+  nome                       text NOT NULL,
+  descrizione                text,
+  peso_per_collo             numeric NOT NULL,
+  peso_variabile             boolean DEFAULT false,
+  vincolo_prodotto_grezzo_id uuid REFERENCES registry.prodotti_grezzi(id),
+  vincolo_varieta_id         uuid REFERENCES registry.varieta(id),
+  is_active                  boolean NOT NULL DEFAULT true,
+  deleted_at                 timestamptz,
+  deleted_by                 uuid REFERENCES auth.users(id)
+);
+
+CREATE TABLE registry.imballaggi_secondari (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at   timestamptz DEFAULT now(),
+  created_by   uuid NOT NULL REFERENCES auth.users(id),
+  updated_at   timestamptz,
+  updated_by   uuid REFERENCES auth.users(id),
+  nome         text NOT NULL,
+  descrizione  text,
+  tara_kg      numeric,
+  lunghezza_cm numeric,
+  larghezza_cm numeric,
+  altezza_cm   numeric,
+  is_active    boolean NOT NULL DEFAULT true,
+  deleted_at   timestamptz,
+  deleted_by   uuid REFERENCES auth.users(id)
+);
+
+CREATE TABLE registry.linee (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at  timestamptz DEFAULT now(),
+  created_by  uuid NOT NULL REFERENCES auth.users(id),
+  updated_at  timestamptz,
+  updated_by  uuid REFERENCES auth.users(id),
+  nome        text NOT NULL,
+  descrizione text,
+  is_active   boolean NOT NULL DEFAULT true,
+  deleted_at  timestamptz,
+  deleted_by  uuid REFERENCES auth.users(id),
+  ordine      integer
+);
+
+CREATE TABLE registry.sigle_lotto (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at         timestamptz DEFAULT now(),
+  created_by         uuid NOT NULL REFERENCES auth.users(id),
+  updated_at         timestamptz,
+  updated_by         uuid REFERENCES auth.users(id),
+  codice             text NOT NULL UNIQUE,
+  produttore         text NOT NULL,
+  prodotto_grezzo_id uuid NOT NULL REFERENCES registry.prodotti_grezzi(id),
+  varieta_id         uuid NOT NULL REFERENCES registry.varieta(id),
+  campo              text
+);
+```
+
+### Blocco 2 — Schema ops_2025
+
+> Ripetere ogni 1 gennaio sostituendo `ops_2025` con `ops_YYYY`.
+```sql
+CREATE SCHEMA ops_2025;
+
+CREATE TABLE ops_2025.lavorazioni (
+  id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at                timestamptz DEFAULT now(),
+  created_by                uuid NOT NULL REFERENCES auth.users(id),
+  updated_at                timestamptz,
+  updated_by                uuid REFERENCES auth.users(id),
+  linea_id                  uuid NOT NULL REFERENCES registry.linee(id),
+  sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice),
+  data_ingresso             date NOT NULL,
+  articolo_id               uuid NOT NULL REFERENCES registry.articoli(id),
+  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id),
+  stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta',
+  aperta_at                 timestamptz NOT NULL DEFAULT now(),
+  chiusa_at                 timestamptz,
+  aperta_da                 uuid NOT NULL REFERENCES auth.users(id)
+);
+
+CREATE TABLE ops_2025.pedane (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at     timestamptz DEFAULT now(),
+  created_by     uuid NOT NULL REFERENCES auth.users(id),
+  updated_at     timestamptz,
+  updated_by     uuid REFERENCES auth.users(id),
+  codice_pedana  text NOT NULL UNIQUE,
+  lavorazione_id uuid NOT NULL REFERENCES ops_2025.lavorazioni(id),
+  numero_colli   integer NOT NULL,
+  peso_totale    numeric NOT NULL,
+  registrata_at  timestamptz NOT NULL DEFAULT now(),
+  registrata_da  uuid NOT NULL REFERENCES auth.users(id)
+);
+
+CREATE TABLE ops_2025.scarti (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at    timestamptz DEFAULT now(),
+  created_by    uuid NOT NULL REFERENCES auth.users(id),
+  updated_at    timestamptz,
+  updated_by    uuid REFERENCES auth.users(id),
+  sigla_lotto   text NOT NULL REFERENCES registry.sigle_lotto(codice),
+  data_ingresso date NOT NULL,
+  colli         integer,
+  peso_kg       numeric,
+  registrato_at timestamptz NOT NULL DEFAULT now(),
+  registrato_da uuid NOT NULL REFERENCES auth.users(id)
+);
+```
+
+### Blocco 3 — Trigger codice_pedana
+
+> Ripetere ogni anno aggiornando lo schema.
+```sql
+CREATE OR REPLACE FUNCTION ops_2025.generate_codice_pedana()
 RETURNS TRIGGER AS $$
 DECLARE
-  anno text;
-  doy_val text;
+  anno        text;
+  doy_val     text;
   progressivo integer;
-  oggi date := CURRENT_DATE;
+  oggi        date := CURRENT_DATE;
 BEGIN
-  anno := TO_CHAR(oggi, 'YY');
+  anno    := TO_CHAR(oggi, 'YY');
   doy_val := LPAD(EXTRACT(DOY FROM oggi)::text, 3, '0');
-
   SELECT COUNT(*) + 1 INTO progressivo
-  FROM pedane
-  WHERE DATE(registrata_at) = oggi;
-
+  FROM ops_2025.pedane
+  WHERE registrata_at::date = oggi;
   NEW.codice_pedana := 'P' || anno || '-' || doy_val || '-' || LPAD(progressivo::text, 4, '0');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_codice_pedana
-BEFORE INSERT ON pedane
-FOR EACH ROW EXECUTE FUNCTION generate_codice_pedana();
+BEFORE INSERT ON ops_2025.pedane
+FOR EACH ROW EXECUTE FUNCTION ops_2025.generate_codice_pedana();
 ```
 
-**Logica peso:**
-- `articoli.peso_variabile = false` → `peso_totale = numero_colli × articoli.peso_per_collo` (calcolato lato app, non modificabile)
-- `articoli.peso_variabile = true` → app propone la stima, Operatore può sovrascrivere. Avviso visivo se modificato. Vedi `DESIGN.md §Modal Registrazione Pedana`.
+> `registrata_at::date` è obbligatorio. `DATE(registrata_at)` non è IMMUTABLE in PostgreSQL e causa errore sugli indici.
 
-**Peso zero bloccato:** validazione lato app — `peso_totale = 0` non permesso.
-
-### `scarti`
+### Blocco 4 — Schema audit
 ```sql
-id                uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at        timestamptz DEFAULT now()
-created_by        uuid NOT NULL REFERENCES auth.users(id)
-updated_at        timestamptz
-updated_by        uuid REFERENCES auth.users(id)
-sigla_lotto       text NOT NULL REFERENCES sigle_lotto(codice)
-data_ingresso     date NOT NULL
-colli             integer      -- numero contenitori scartati. Almeno uno tra colli e peso_kg obbligatorio.
-peso_kg           numeric      -- peso totale scarto in kg. Almeno uno tra colli e peso_kg obbligatorio.
-registrato_at     timestamptz NOT NULL DEFAULT now()
-registrato_da     uuid NOT NULL REFERENCES auth.users(id)
+CREATE SCHEMA audit;
+
+CREATE TABLE audit.log (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_at    timestamptz NOT NULL DEFAULT now(),
+  actor_id    uuid NOT NULL REFERENCES auth.users(id),
+  actor_name  text NOT NULL,
+  schema_name text NOT NULL,
+  table_name  text NOT NULL,
+  record_id   uuid NOT NULL,
+  action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','open','close','reopen')),
+  field_name  text,
+  old_value   jsonb,
+  new_value   jsonb,
+  reason      text
+);
 ```
 
-**Formula % scarto per lotto (sigla + data ingresso):**
+### Blocco 5 — Indici
 ```sql
-WITH prodotto AS (
-  SELECT
-    COALESCE(SUM(p.peso_totale), 0) AS prodotto_kg
-  FROM lavorazioni lav
-  LEFT JOIN pedane p ON p.lavorazione_id = lav.id
-  WHERE lav.sigla_lotto = '<sigla_lotto>'
-    AND lav.data_ingresso = '<data_ingresso>'
-),
-scarto AS (
-  SELECT
-    COALESCE(SUM(s.peso_kg), 0) AS scarto_kg
-  FROM scarti s
-  WHERE s.sigla_lotto = '<sigla_lotto>'
-    AND s.data_ingresso = '<data_ingresso>'
-)
-SELECT
-  scarto.scarto_kg,
-  prodotto.prodotto_kg,
-  ROUND(
-    scarto.scarto_kg / NULLIF(prodotto.prodotto_kg + scarto.scarto_kg, 0) * 100,
-    2
-  ) AS percentuale_scarto
-FROM prodotto
-CROSS JOIN scarto;
+CREATE INDEX idx_lav_linea    ON ops_2025.lavorazioni(linea_id);
+CREATE INDEX idx_lav_stato    ON ops_2025.lavorazioni(stato);
+CREATE INDEX idx_lav_at       ON ops_2025.lavorazioni(aperta_at);
+CREATE INDEX idx_lav_lotto    ON ops_2025.lavorazioni(sigla_lotto, data_ingresso);
+CREATE INDEX idx_ped_lav      ON ops_2025.pedane(lavorazione_id);
+CREATE INDEX idx_ped_data     ON ops_2025.pedane((registrata_at::date));
+CREATE INDEX idx_sca_lotto    ON ops_2025.scarti(sigla_lotto, data_ingresso);
+CREATE INDEX idx_audit_record ON audit.log(schema_name, table_name, record_id);
+CREATE INDEX idx_audit_actor  ON audit.log(actor_id);
 ```
 
-I campi `colli` e `peso_kg` sono indipendenti — nessun calcolo automatico tra i due.
-
-### `audit_log`
+### Blocco 6 — Funzione ruolo e RLS
 ```sql
-id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
-event_at        timestamptz NOT NULL DEFAULT now()
-actor_id        uuid NOT NULL REFERENCES auth.users(id)
-actor_name      text NOT NULL        -- snapshot del nome al momento dell'azione (denormalizzato)
-table_name      text NOT NULL        -- es. 'lavorazioni', 'pedane', 'scarti', 'articoli'
-record_id       uuid NOT NULL        -- ID del record coinvolto
-action          text NOT NULL        -- 'insert' | 'update' | 'soft_delete' | 'restore' | 'open' | 'close' | 'reopen'
-field_name      text                 -- nome del campo modificato (solo per azione 'update')
-old_value       jsonb                -- stato prima della modifica
-new_value       jsonb                -- stato dopo la modifica
-reason          text                 -- motivazione opzionale inserita dall'utente
-```
-
-**Regole immutabilità — enforce via RLS + trigger:**
-- Solo `INSERT` permesso su `audit_log`, mai `UPDATE` o `DELETE`
-- `audit_log` non usa campi `updated_*` e non supporta soft delete
-- Copre tutte le tabelle: anagrafiche, lavorazioni, pedane, scarti
-- Ogni INSERT, UPDATE, soft delete (`is_active = false`) e restore (`is_active = true`) genera una riga
-- Accessibile in lettura solo all'Admin
-
----
-
-## Relazioni
-
-```
-prodotti_grezzi
-  └── varieta (N:1)
-        └── sigle_lotto (N:1 prodotto_grezzo + varieta)
-              ├── lavorazioni (N:1, via sigla_lotto + data_ingresso)
-              │     └── pedane (N:1)
-              └── scarti (N:1, via sigla_lotto + data_ingresso)
-
-articoli
-  ├── vincolo_prodotto_grezzo_id → prodotti_grezzi (nullable)
-  └── vincolo_varieta_id → varieta (nullable)
-
-lavorazioni
-  ├── linea_id → linee
-  ├── sigla_lotto + data_ingresso (identificatore lotto operativo)
-  ├── articolo_id → articoli
-  └── imballaggio_secondario_id → imballaggi_secondari
-```
-
----
-
-## Indici
-
-```sql
--- Query frequenti cruscotto
-CREATE INDEX idx_lavorazioni_linea ON lavorazioni(linea_id);
-CREATE INDEX idx_lavorazioni_stato ON lavorazioni(stato);
-CREATE INDEX idx_lavorazioni_aperta_at ON lavorazioni(aperta_at);
-CREATE INDEX idx_lavorazioni_lotto ON lavorazioni(sigla_lotto, data_ingresso);
-
--- Pedane per lavorazione e per giorno
-CREATE INDEX idx_pedane_lavorazione ON pedane(lavorazione_id);
-CREATE INDEX idx_pedane_data ON pedane(DATE(registrata_at));
-
--- Scarti per lotto
-CREATE INDEX idx_scarti_lotto ON scarti(sigla_lotto, data_ingresso);
-
--- Audit log per record e attore
-CREATE INDEX idx_audit_log_record ON audit_log(table_name, record_id);
-CREATE INDEX idx_audit_log_actor ON audit_log(actor_id);
-```
-
----
-
-## RLS Policies (Supabase)
-
-```sql
--- Abilita RLS su tutte le tabelle
-ALTER TABLE prodotti_grezzi ENABLE ROW LEVEL SECURITY;
-ALTER TABLE varieta ENABLE ROW LEVEL SECURITY;
-ALTER TABLE articoli ENABLE ROW LEVEL SECURITY;
-ALTER TABLE imballaggi_secondari ENABLE ROW LEVEL SECURITY;
-ALTER TABLE linee ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sigle_lotto ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lavorazioni ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pedane ENABLE ROW LEVEL SECURITY;
-ALTER TABLE scarti ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
-
--- Helper: ruolo utente corrente
-CREATE OR REPLACE FUNCTION auth_role() RETURNS text AS $$
-  SELECT COALESCE(
-    (auth.jwt() -> 'user_metadata' ->> 'role'),
-    'viewer'
-  );
+CREATE OR REPLACE FUNCTION public.auth_role() RETURNS text AS $$
+  SELECT COALESCE((auth.jwt() -> 'user_metadata' ->> 'role'), 'viewer');
 $$ LANGUAGE sql STABLE;
 
--- Anagrafiche: Admin CRUD, Operatore e Viewer solo lettura
-CREATE POLICY "anagrafiche_select" ON prodotti_grezzi
-  FOR SELECT TO authenticated USING (true);
-CREATE POLICY "anagrafiche_write" ON prodotti_grezzi
-  FOR ALL TO authenticated USING (auth_role() = 'admin');
--- (stessa logica per varieta, articoli, imballaggi_secondari, linee, sigle_lotto)
+ALTER TABLE registry.prodotti_grezzi      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registry.varieta              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registry.articoli             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registry.imballaggi_secondari ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registry.linee                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registry.sigle_lotto          ENABLE ROW LEVEL SECURITY;
 
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'registry.prodotti_grezzi','registry.varieta','registry.articoli',
+    'registry.imballaggi_secondari','registry.linee','registry.sigle_lotto'
+  ]
+  LOOP
+    EXECUTE format('CREATE POLICY "select" ON %s FOR SELECT TO authenticated USING (true)', t);
+    EXECUTE format('CREATE POLICY "write"  ON %s FOR ALL    TO authenticated
+      USING (public.auth_role() = ''admin'')
+      WITH CHECK (public.auth_role() = ''admin'')', t);
+  END LOOP;
+END $$;
 
--- Lavorazioni, pedane, scarti: Admin e Operatore CRUD, Viewer solo lettura
-CREATE POLICY "produttivo_select" ON lavorazioni
-  FOR SELECT TO authenticated USING (true);
-CREATE POLICY "produttivo_write" ON lavorazioni
-  FOR ALL TO authenticated
-  USING (auth_role() IN ('admin', 'operatore'))
-  WITH CHECK (auth_role() IN ('admin', 'operatore'));
--- (stessa logica per pedane, scarti)
+ALTER TABLE ops_2025.lavorazioni ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ops_2025.pedane      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ops_2025.scarti      ENABLE ROW LEVEL SECURITY;
 
--- Audit log: tutti inseriscono, solo Admin legge, nessuno modifica/cancella
-CREATE POLICY "audit_log_insert" ON audit_log
-  FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "audit_log_select" ON audit_log
-  FOR SELECT TO authenticated USING (auth_role() = 'admin');
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['ops_2025.lavorazioni','ops_2025.pedane','ops_2025.scarti']
+  LOOP
+    EXECUTE format('CREATE POLICY "select" ON %s FOR SELECT TO authenticated USING (true)', t);
+    EXECUTE format('CREATE POLICY "write"  ON %s FOR ALL    TO authenticated
+      USING (public.auth_role() IN (''admin'',''operatore''))
+      WITH CHECK (public.auth_role() IN (''admin'',''operatore''))', t);
+  END LOOP;
+END $$;
+
+ALTER TABLE audit.log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "insert" ON audit.log FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "select" ON audit.log FOR SELECT TO authenticated USING (public.auth_role() = 'admin');
 ```
+
+---
+
+## Utenti
+
+Creare da **Supabase → Authentication → Users → Add user**, poi assegnare il ruolo:
+```sql
+-- admin
+UPDATE auth.users
+SET raw_user_meta_data = raw_user_meta_data || '{"role": "admin"}'::jsonb
+WHERE email = 'admin@azienda.it';
+
+-- operatore
+UPDATE auth.users
+SET raw_user_meta_data = raw_user_meta_data || '{"role": "operatore"}'::jsonb
+WHERE email = 'operatore@azienda.it';
+
+-- viewer (default se ruolo assente, ma meglio esplicitarlo)
+UPDATE auth.users
+SET raw_user_meta_data = raw_user_meta_data || '{"role": "viewer"}'::jsonb
+WHERE email = 'viewer@azienda.it';
+```
+
+---
+
+## Manutenzione annuale (ogni 1 gennaio)
+
+| # | Dove | Azione |
+|---|---|---|
+| 1 | Supabase SQL Editor | Blocco 2 con nuovo `ops_YYYY` |
+| 2 | Supabase SQL Editor | Blocco 3 con nuovo `ops_YYYY` |
+| 3 | Supabase SQL Editor | Blocco 5 indici con nuovo `ops_YYYY` |
+| 4 | Supabase SQL Editor | Blocco 6 RLS per nuovo `ops_YYYY` |
+| 5 | Supabase Replication | Aggiungi toggle per 3 tabelle nuovo anno |
+| 6 | GitHub | Aggiorna `OPS_SCHEMA` in `src/lib/config/db.ts`, committa su `main` |
+| 7 | Vercel | Verifica redeploy |
+| 8 | Supabase Replication | Disattiva toggle anno precedente (opzionale) |
