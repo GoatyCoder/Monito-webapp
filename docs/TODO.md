@@ -169,12 +169,12 @@
 
 ## Anagrafiche (Admin)
 
-- [ ] CRUD prodotti grezzi e varietà
-- [ ] CRUD articoli con vincoli
-- [ ] CRUD imballaggi secondari
-- [ ] CRUD linee con campo `ordine`
-- [ ] CRUD sigle lotto
-- [ ] Soft delete su tutte le anagrafiche
+- [x] CRUD prodotti grezzi e varietà
+- [x] CRUD articoli con vincoli
+- [x] CRUD imballaggi secondari
+- [x] CRUD linee con campo `ordine`
+- [x] CRUD sigle lotto
+- [x] Soft delete su tutte le anagrafiche
 
 ---
 
