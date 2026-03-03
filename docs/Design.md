@@ -397,3 +397,27 @@ Tempo attivo = somma `(chiusa_at - aperta_at)` delle lavorazioni chiuse nella gi
 
 ### Per Articolo
 Colonne: Articolo · Pedane totali · Colli totali · Peso totale · Lotti coinvolti
+
+
+## Sezione Anagrafiche (Admin)
+
+Layout gestionale composto da:
+
+- Barra tab orizzontale con 6 entità (`Prodotti grezzi`, `Varietà`, `Articoli`, `Imballaggi`, `Linee`, `Sigle lotto`)
+- Header sezione con titolo tab attiva, descrizione e CTA primaria `+ Nuovo record`
+- Tabella con colonne ordinabili (click su header, stato visualizzato con freccia `↑` / `↓`)
+- Colonna azioni con `Modifica` e `Disattiva/Ripristina`
+- Footer tabella con paginazione (`Precedente`, `Successiva`) e contatore record
+
+### Modali Anagrafiche
+
+- Modale unica per creazione e modifica record
+- Overlay scuro (`bg-slate-900/60`) e card centrale `surface` con border radius `xl`
+- Form su griglia responsive (1 colonna mobile, 2 desktop)
+- Azioni allineate a destra: `Annulla` (secondary), `Crea record` / `Salva modifiche` (primary)
+
+### Stati e feedback
+
+- Messaggio di stato persistente in testa pagina (successo o errore)
+- Righe disattivate visualizzate con contrasto ridotto (`bg-slate-50` + testo muted)
+- Empty state tabellare: `Nessun record presente.`

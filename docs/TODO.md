@@ -198,6 +198,10 @@
 - [x] CRUD sigle lotto
 - [x] Soft delete su tutte le anagrafiche
 - [x] Refactor query anagrafiche: CRUD e fetch centralizzate in `src/lib/db/registry-queries.ts`
+- [x] Refactor UI anagrafiche: organizzazione in tab per entità
+- [x] Tabella gestionale con colonne ordinabili da header
+- [x] Paginazione client-side per tutte le entità
+- [x] Modali dedicate per creazione e modifica record
 
 ---
 

@@ -105,6 +105,8 @@ Stampata via `react-to-print`. Contenuto: Prodotto Grezzo, Varietà, Articolo, C
 ### Anagrafiche (Admin)
 Linee, Prodotti Grezzi, Varietà, Imballaggi Secondari, Articoli, Sigle Lotto. Nessuna cancellazione fisica — soft delete con `is_active` (`false` = disattivato), tracciato con `deleted_at` e `deleted_by`. Vedi schema completo in `SCHEMA.md`.
 
+Interfaccia Admin v1: tab per entità, tabella ordinabile cliccando sull'header, paginazione, modale di creazione/modifica, azione di disattivazione/ripristino inline.
+
 ### Report
 Filtro per data o intervallo. Export PDF, Excel, CSV.
 - **Per Lotto (sigla + data ingresso):** pedane, colli, peso totale, scarto (kg/colli/%), linee coinvolte, articoli prodotti

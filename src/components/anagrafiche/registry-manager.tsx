@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { REGISTRY_SCHEMA } from '@/lib/config/db';
 import {
@@ -75,36 +75,301 @@ type RegistryData = {
   sigleLotto: SiglaLottoRow[];
 };
 
+type RegistryRecord =
+  | ProdottoGrezzoRow
+  | VarietaRow
+  | ArticoloRow
+  | ImballaggioRow
+  | LineaRow
+  | SiglaLottoRow;
 
-function sortByName<T extends { nome: string }>(rows: T[]): T[] {
-  return [...rows].sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
-}
+type SortDirection = 'asc' | 'desc';
 
-function sortLinee(rows: LineaRow[]): LineaRow[] {
-  return [...rows].sort((a, b) => {
-    if (a.ordine === null && b.ordine === null) {
-      return a.nome.localeCompare(b.nome, 'it');
-    }
-    if (a.ordine === null) {
-      return 1;
-    }
-    if (b.ordine === null) {
-      return -1;
-    }
-    return a.ordine - b.ordine;
-  });
-}
+type SortConfig = {
+  key: string;
+  direction: SortDirection;
+};
 
-function sortSigle(rows: SiglaLottoRow[]): SiglaLottoRow[] {
-  return [...rows].sort((a, b) => a.codice.localeCompare(b.codice, 'it'));
-}
+type ModalState =
+  | {
+      mode: 'create';
+      table: RegistryTable;
+    }
+  | {
+      mode: 'edit';
+      table: RegistryTable;
+      row: RegistryRecord;
+    }
+  | null;
+
+type TableColumn = {
+  key: string;
+  label: string;
+  className?: string;
+  getValue: (row: RegistryRecord) => string | number | boolean | null;
+  render: (row: RegistryRecord) => ReactNode;
+};
+
+const TAB_CONFIG: { key: RegistryTable; label: string; description: string }[] = [
+  { key: 'prodotti_grezzi', label: 'Prodotti grezzi', description: 'Gestione materie prime di base' },
+  { key: 'varieta', label: 'Varietà', description: 'Catalogo varietà collegate ai prodotti grezzi' },
+  { key: 'articoli', label: 'Articoli', description: 'Anagrafica articoli di confezionamento' },
+  { key: 'imballaggi_secondari', label: 'Imballaggi', description: 'Contenitori secondari e misure' },
+  { key: 'linee', label: 'Linee', description: 'Linee di produzione e ordinamento dashboard' },
+  { key: 'sigle_lotto', label: 'Sigle lotto', description: 'Codici lotto e produttore di riferimento' }
+];
+
+const PAGE_SIZE = 8;
 
 function parseNumberOrNull(value: string): number | null {
   if (!value.trim()) {
     return null;
   }
 
-  return Number(value);
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function normalizeString(value: FormDataEntryValue | null): string {
+  return String(value ?? '').trim();
+}
+
+function getRowsByTable(data: RegistryData, table: RegistryTable): RegistryRecord[] {
+  switch (table) {
+    case 'prodotti_grezzi':
+      return data.prodottiGrezzi;
+    case 'varieta':
+      return data.varieta;
+    case 'articoli':
+      return data.articoli;
+    case 'imballaggi_secondari':
+      return data.imballaggi;
+    case 'linee':
+      return data.linee;
+    case 'sigle_lotto':
+      return data.sigleLotto;
+  }
+}
+
+function getDefaultSortState(): Record<RegistryTable, SortConfig> {
+  return {
+    prodotti_grezzi: { key: 'nome', direction: 'asc' },
+    varieta: { key: 'nome', direction: 'asc' },
+    articoli: { key: 'nome', direction: 'asc' },
+    imballaggi_secondari: { key: 'nome', direction: 'asc' },
+    linee: { key: 'ordine', direction: 'asc' },
+    sigle_lotto: { key: 'codice', direction: 'asc' }
+  };
+}
+
+function getTableColumns(
+  table: RegistryTable,
+  prodottoById: Map<string, string>,
+  varietaById: Map<string, string>
+): TableColumn[] {
+  switch (table) {
+    case 'prodotti_grezzi':
+      return [
+        {
+          key: 'nome',
+          label: 'Nome',
+          getValue: (row) => ('nome' in row ? row.nome : ''),
+          render: (row) => ('nome' in row ? row.nome : '')
+        },
+        {
+          key: 'descrizione',
+          label: 'Descrizione',
+          getValue: (row) => ('descrizione' in row ? (row.descrizione ?? '') : ''),
+          render: (row) => ('descrizione' in row ? (row.descrizione ?? '—') : '—')
+        }
+      ];
+    case 'varieta':
+      return [
+        {
+          key: 'nome',
+          label: 'Nome',
+          getValue: (row) => ('nome' in row ? row.nome : ''),
+          render: (row) => ('nome' in row ? row.nome : '')
+        },
+        {
+          key: 'prodotto_grezzo_id',
+          label: 'Prodotto grezzo',
+          getValue: (row) => ('prodotto_grezzo_id' in row ? prodottoById.get(row.prodotto_grezzo_id) ?? '' : ''),
+          render: (row) =>
+            'prodotto_grezzo_id' in row ? (prodottoById.get(row.prodotto_grezzo_id) ?? 'Non associato') : '—'
+        },
+        {
+          key: 'descrizione',
+          label: 'Descrizione',
+          getValue: (row) => ('descrizione' in row ? (row.descrizione ?? '') : ''),
+          render: (row) => ('descrizione' in row ? (row.descrizione ?? '—') : '—')
+        }
+      ];
+    case 'articoli':
+      return [
+        {
+          key: 'nome',
+          label: 'Nome',
+          getValue: (row) => ('nome' in row ? row.nome : ''),
+          render: (row) => ('nome' in row ? row.nome : '')
+        },
+        {
+          key: 'peso_per_collo',
+          label: 'Peso/collo',
+          getValue: (row) => ('peso_per_collo' in row ? row.peso_per_collo : 0),
+          render: (row) => ('peso_per_collo' in row ? `${row.peso_per_collo} kg` : '—')
+        },
+        {
+          key: 'peso_variabile',
+          label: 'Peso variabile',
+          getValue: (row) => ('peso_variabile' in row ? row.peso_variabile : false),
+          render: (row) => ('peso_variabile' in row ? (row.peso_variabile ? 'Sì' : 'No') : 'No')
+        },
+        {
+          key: 'vincolo_prodotto_grezzo_id',
+          label: 'Vincoli',
+          getValue: (row) => {
+            if (!('vincolo_prodotto_grezzo_id' in row) || !('vincolo_varieta_id' in row)) {
+              return '';
+            }
+            return `${prodottoById.get(row.vincolo_prodotto_grezzo_id ?? '') ?? ''} ${varietaById.get(row.vincolo_varieta_id ?? '') ?? ''}`;
+          },
+          render: (row) => {
+            if (!('vincolo_prodotto_grezzo_id' in row) || !('vincolo_varieta_id' in row)) {
+              return 'Nessun vincolo';
+            }
+            const prodotto = row.vincolo_prodotto_grezzo_id
+              ? (prodottoById.get(row.vincolo_prodotto_grezzo_id) ?? 'Prodotto non trovato')
+              : null;
+            const varieta = row.vincolo_varieta_id ? (varietaById.get(row.vincolo_varieta_id) ?? 'Varietà non trovata') : null;
+            if (!prodotto && !varieta) {
+              return 'Nessun vincolo';
+            }
+            return `${prodotto ?? '—'} / ${varieta ?? '—'}`;
+          }
+        }
+      ];
+    case 'imballaggi_secondari':
+      return [
+        {
+          key: 'nome',
+          label: 'Nome',
+          getValue: (row) => ('nome' in row ? row.nome : ''),
+          render: (row) => ('nome' in row ? row.nome : '')
+        },
+        {
+          key: 'tara_kg',
+          label: 'Tara',
+          getValue: (row) => ('tara_kg' in row ? (row.tara_kg ?? 0) : 0),
+          render: (row) => ('tara_kg' in row ? (row.tara_kg !== null ? `${row.tara_kg} kg` : '—') : '—')
+        },
+        {
+          key: 'dimensioni',
+          label: 'Dimensioni (cm)',
+          getValue: (row) => {
+            if (!('lunghezza_cm' in row) || !('larghezza_cm' in row) || !('altezza_cm' in row)) {
+              return '';
+            }
+            return `${row.lunghezza_cm ?? ''}-${row.larghezza_cm ?? ''}-${row.altezza_cm ?? ''}`;
+          },
+          render: (row) => {
+            if (!('lunghezza_cm' in row) || !('larghezza_cm' in row) || !('altezza_cm' in row)) {
+              return '—';
+            }
+            const lunghezza = row.lunghezza_cm ?? '—';
+            const larghezza = row.larghezza_cm ?? '—';
+            const altezza = row.altezza_cm ?? '—';
+            return `${lunghezza} × ${larghezza} × ${altezza}`;
+          }
+        }
+      ];
+    case 'linee':
+      return [
+        {
+          key: 'ordine',
+          label: 'Ordine',
+          getValue: (row) => ('ordine' in row ? (row.ordine ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER),
+          render: (row) => ('ordine' in row ? (row.ordine ?? '—') : '—')
+        },
+        {
+          key: 'nome',
+          label: 'Nome',
+          getValue: (row) => ('nome' in row ? row.nome : ''),
+          render: (row) => ('nome' in row ? row.nome : '')
+        },
+        {
+          key: 'descrizione',
+          label: 'Descrizione',
+          getValue: (row) => ('descrizione' in row ? (row.descrizione ?? '') : ''),
+          render: (row) => ('descrizione' in row ? (row.descrizione ?? '—') : '—')
+        }
+      ];
+    case 'sigle_lotto':
+      return [
+        {
+          key: 'codice',
+          label: 'Codice',
+          getValue: (row) => ('codice' in row ? row.codice : ''),
+          render: (row) => ('codice' in row ? row.codice : '')
+        },
+        {
+          key: 'produttore',
+          label: 'Produttore',
+          getValue: (row) => ('produttore' in row ? row.produttore : ''),
+          render: (row) => ('produttore' in row ? row.produttore : '')
+        },
+        {
+          key: 'prodotto_grezzo_id',
+          label: 'Prodotto / Varietà',
+          getValue: (row) => {
+            if (!('prodotto_grezzo_id' in row) || !('varieta_id' in row)) {
+              return '';
+            }
+            return `${prodottoById.get(row.prodotto_grezzo_id) ?? ''} ${varietaById.get(row.varieta_id) ?? ''}`;
+          },
+          render: (row) => {
+            if (!('prodotto_grezzo_id' in row) || !('varieta_id' in row)) {
+              return '—';
+            }
+            return `${prodottoById.get(row.prodotto_grezzo_id) ?? 'Prodotto non trovato'} / ${varietaById.get(row.varieta_id) ?? 'Varietà non trovata'}`;
+          }
+        },
+        {
+          key: 'campo',
+          label: 'Campo',
+          getValue: (row) => ('campo' in row ? (row.campo ?? '') : ''),
+          render: (row) => ('campo' in row ? (row.campo ?? '—') : '—')
+        }
+      ];
+  }
+}
+
+function compareValues(a: string | number | boolean | null, b: string | number | boolean | null): number {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a - b;
+  }
+
+  if (typeof a === 'boolean' && typeof b === 'boolean') {
+    return Number(a) - Number(b);
+  }
+
+  return String(a ?? '').localeCompare(String(b ?? ''), 'it', { sensitivity: 'base' });
+}
+
+function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+      <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+          <button type="button" onClick={onClose} className="rounded-md border border-slate-300 px-3 py-1 text-sm">
+            Chiudi
+          </button>
+        </header>
+        <div className="max-h-[75vh] overflow-y-auto px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export function RegistryManager() {
@@ -116,51 +381,71 @@ export function RegistryManager() {
     linee: [],
     sigleLotto: []
   });
-  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<RegistryTable>('prodotti_grezzi');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [modalState, setModalState] = useState<ModalState>(null);
+  const [sortState, setSortState] = useState<Record<RegistryTable, SortConfig>>(getDefaultSortState);
+  const [pageState, setPageState] = useState<Record<RegistryTable, number>>({
+    prodotti_grezzi: 1,
+    varieta: 1,
+    articoli: 1,
+    imballaggi_secondari: 1,
+    linee: 1,
+    sigle_lotto: 1
+  });
   const [userIdentity, setUserIdentity] = useState<{ userId: string; actorName: string } | null>(null);
+
   const supabase = useMemo(() => createSupabaseClient(), []);
 
-  const prodottoById = useMemo(() => {
-    return new Map(data.prodottiGrezzi.map((prodotto) => [prodotto.id, prodotto.nome]));
-  }, [data.prodottiGrezzi]);
+  const prodottoById = useMemo(
+    () => new Map(data.prodottiGrezzi.map((prodotto) => [prodotto.id, prodotto.nome])),
+    [data.prodottiGrezzi]
+  );
+  const varietaById = useMemo(() => new Map(data.varieta.map((row) => [row.id, row.nome])), [data.varieta]);
 
-  const varietaById = useMemo(() => {
-    return new Map(data.varieta.map((varieta) => [varieta.id, varieta.nome]));
-  }, [data.varieta]);
+  const columns = useMemo(() => getTableColumns(activeTab, prodottoById, varietaById), [activeTab, prodottoById, varietaById]);
 
-  function upsertLocalRow(table: RegistryTable, row: Record<string, unknown>) {
+  const tableRows = useMemo(() => {
+    const rows = getRowsByTable(data, activeTab);
+    const sort = sortState[activeTab];
+    const column = columns.find((item) => item.key === sort.key) ?? columns[0];
+
+    const sorted = [...rows].sort((rowA, rowB) => {
+      const result = compareValues(column.getValue(rowA), column.getValue(rowB));
+      return sort.direction === 'asc' ? result : -result;
+    });
+
+    return sorted;
+  }, [activeTab, columns, data, sortState]);
+
+  const totalPages = Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE));
+  const currentPage = Math.min(pageState[activeTab], totalPages);
+  const paginatedRows = tableRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const setPage = (table: RegistryTable, nextPage: number) => {
+    setPageState((current) => ({ ...current, [table]: Math.max(1, nextPage) }));
+  };
+
+  function upsertLocalRow(table: RegistryTable, row: RegistryRecord) {
     setData((currentData) => {
+      const upsert = <T extends RegistryRecord>(rows: T[]) => [
+        ...rows.filter((existingRow) => existingRow.id !== row.id),
+        row as T
+      ];
+
       switch (table) {
-        case 'prodotti_grezzi': {
-          const newRow = row as ProdottoGrezzoRow;
-          const rows = currentData.prodottiGrezzi.filter((existingRow) => existingRow.id !== newRow.id);
-          return { ...currentData, prodottiGrezzi: sortByName([...rows, newRow]) };
-        }
-        case 'varieta': {
-          const newRow = row as VarietaRow;
-          const rows = currentData.varieta.filter((existingRow) => existingRow.id !== newRow.id);
-          return { ...currentData, varieta: sortByName([...rows, newRow]) };
-        }
-        case 'articoli': {
-          const newRow = row as ArticoloRow;
-          const rows = currentData.articoli.filter((existingRow) => existingRow.id !== newRow.id);
-          return { ...currentData, articoli: sortByName([...rows, newRow]) };
-        }
-        case 'imballaggi_secondari': {
-          const newRow = row as ImballaggioRow;
-          const rows = currentData.imballaggi.filter((existingRow) => existingRow.id !== newRow.id);
-          return { ...currentData, imballaggi: sortByName([...rows, newRow]) };
-        }
-        case 'linee': {
-          const newRow = row as LineaRow;
-          const rows = currentData.linee.filter((existingRow) => existingRow.id !== newRow.id);
-          return { ...currentData, linee: sortLinee([...rows, newRow]) };
-        }
-        case 'sigle_lotto': {
-          const newRow = row as SiglaLottoRow;
-          const rows = currentData.sigleLotto.filter((existingRow) => existingRow.id !== newRow.id);
-          return { ...currentData, sigleLotto: sortSigle([...rows, newRow]) };
-        }
+        case 'prodotti_grezzi':
+          return { ...currentData, prodottiGrezzi: upsert(currentData.prodottiGrezzi) };
+        case 'varieta':
+          return { ...currentData, varieta: upsert(currentData.varieta) };
+        case 'articoli':
+          return { ...currentData, articoli: upsert(currentData.articoli) };
+        case 'imballaggi_secondari':
+          return { ...currentData, imballaggi: upsert(currentData.imballaggi) };
+        case 'linee':
+          return { ...currentData, linee: upsert(currentData.linee) };
+        case 'sigle_lotto':
+          return { ...currentData, sigleLotto: upsert(currentData.sigleLotto) };
       }
     });
   }
@@ -186,15 +471,7 @@ export function RegistryManager() {
   }
 
   const loadRegistryData = useCallback(async () => {
-    const [
-      prodottiResponse,
-      varietaResponse,
-      articoliResponse,
-      imballaggiResponse,
-      lineeResponse,
-      sigleLottoResponse,
-      userResponse
-    ] = await Promise.all([
+    const [prodotti, varieta, articoli, imballaggi, linee, sigleLotto, userResponse] = await Promise.all([
       fetchRegistryTable(supabase, 'prodotti_grezzi', 'nome'),
       fetchRegistryTable(supabase, 'varieta', 'nome'),
       fetchRegistryTable(supabase, 'articoli', 'nome'),
@@ -204,30 +481,22 @@ export function RegistryManager() {
       fetchCurrentUser(supabase)
     ]);
 
-    const errors = [
-      prodottiResponse.error,
-      varietaResponse.error,
-      articoliResponse.error,
-      imballaggiResponse.error,
-      lineeResponse.error,
-      sigleLottoResponse.error,
-      userResponse.error
-    ].filter((error) => error !== null);
+    const errors = [prodotti.error, varieta.error, articoli.error, imballaggi.error, linee.error, sigleLotto.error, userResponse.error].filter(
+      (error) => error !== null
+    );
 
     if (errors.length > 0) {
-      const errorMessages = errors.map((error) => error.message).join('; ');
-      console.error('Errore durante il caricamento delle anagrafiche:', errors);
-      setStatusMessage(`Errore caricamento anagrafiche: ${errorMessages}`);
+      setStatusMessage(`Errore caricamento anagrafiche: ${errors.map((error) => error.message).join('; ')}`);
       return;
     }
 
     setData({
-      prodottiGrezzi: (prodottiResponse.data ?? []) as ProdottoGrezzoRow[],
-      varieta: (varietaResponse.data ?? []) as VarietaRow[],
-      articoli: (articoliResponse.data ?? []) as ArticoloRow[],
-      imballaggi: (imballaggiResponse.data ?? []) as ImballaggioRow[],
-      linee: (lineeResponse.data ?? []) as LineaRow[],
-      sigleLotto: (sigleLottoResponse.data ?? []) as SiglaLottoRow[]
+      prodottiGrezzi: (prodotti.data ?? []) as ProdottoGrezzoRow[],
+      varieta: (varieta.data ?? []) as VarietaRow[],
+      articoli: (articoli.data ?? []) as ArticoloRow[],
+      imballaggi: (imballaggi.data ?? []) as ImballaggioRow[],
+      linee: (linee.data ?? []) as LineaRow[],
+      sigleLotto: (sigleLotto.data ?? []) as SiglaLottoRow[]
     });
 
     const user = userResponse.data.user;
@@ -271,22 +540,21 @@ export function RegistryManager() {
   async function createRecord(table: RegistryTable, payload: Record<string, unknown>) {
     if (!userIdentity) {
       setStatusMessage('Utente non disponibile. Ricarica la pagina.');
-      return;
+      return false;
     }
 
     if (table === 'sigle_lotto') {
       const incompatibilityError = validateSiglaLottoPairing(payload);
       if (incompatibilityError) {
         setStatusMessage(incompatibilityError);
-        return;
+        return false;
       }
     }
 
     const response = await createRegistryRow(supabase, table, payload, userIdentity.userId);
-
     if (response.error || !response.data) {
       setStatusMessage(`Errore creazione ${table}: ${response.error?.message ?? 'sconosciuto'}`);
-      return;
+      return false;
     }
 
     await logAuditEvent({
@@ -297,35 +565,35 @@ export function RegistryManager() {
       newValue: response.data
     });
 
-    setStatusMessage(`Record creato in ${table}.`);
-    upsertLocalRow(table, response.data);
+    upsertLocalRow(table, response.data as RegistryRecord);
+    setStatusMessage('Record creato con successo.');
+    return true;
   }
 
-  async function updateRecord(table: RegistryTable, rowId: string, payload: Record<string, unknown>) {
+  async function editRecord(table: RegistryTable, rowId: string, payload: Record<string, unknown>) {
     if (!userIdentity) {
       setStatusMessage('Utente non disponibile. Ricarica la pagina.');
-      return;
+      return false;
     }
 
     if (table === 'sigle_lotto') {
       const incompatibilityError = validateSiglaLottoPairing(payload);
       if (incompatibilityError) {
         setStatusMessage(incompatibilityError);
-        return;
+        return false;
       }
     }
 
     const existing = await fetchRegistryRowById(supabase, table, rowId);
     if (existing.error || !existing.data) {
       setStatusMessage(`Errore lettura record ${table}: ${existing.error?.message ?? 'sconosciuto'}`);
-      return;
+      return false;
     }
 
     const response = await updateRegistryRow(supabase, table, rowId, payload, userIdentity.userId);
-
     if (response.error || !response.data) {
       setStatusMessage(`Errore aggiornamento ${table}: ${response.error?.message ?? 'sconosciuto'}`);
-      return;
+      return false;
     }
 
     await logAuditEvent({
@@ -336,24 +604,26 @@ export function RegistryManager() {
       newValue: response.data
     });
 
-    setStatusMessage(`Record aggiornato in ${table}.`);
-    upsertLocalRow(table, response.data);
+    upsertLocalRow(table, response.data as RegistryRecord);
+    setStatusMessage('Record aggiornato con successo.');
+    return true;
   }
 
-  async function softDeleteRecord(table: RegistryTable, rowId: string, shouldRestore: boolean) {
+  async function toggleRecordActive(table: RegistryTable, row: RegistryRecord) {
     if (!userIdentity) {
       setStatusMessage('Utente non disponibile. Ricarica la pagina.');
       return;
     }
 
-    const existing = await fetchRegistryRowById(supabase, table, rowId);
+    const shouldRestore = row.is_active === false;
+
+    const existing = await fetchRegistryRowById(supabase, table, row.id);
     if (existing.error || !existing.data) {
       setStatusMessage(`Errore lettura record ${table}: ${existing.error?.message ?? 'sconosciuto'}`);
       return;
     }
 
-    const response = await setRegistryRowActiveStatus(supabase, table, rowId, shouldRestore, userIdentity.userId);
-
+    const response = await setRegistryRowActiveStatus(supabase, table, row.id, shouldRestore, userIdentity.userId);
     if (response.error || !response.data) {
       setStatusMessage(
         `Errore ${shouldRestore ? 'ripristino' : 'disattivazione'} ${table}: ${response.error?.message ?? 'sconosciuto'}`
@@ -363,329 +633,452 @@ export function RegistryManager() {
 
     await logAuditEvent({
       tableName: table,
-      recordId: rowId,
+      recordId: row.id,
       action: shouldRestore ? 'restore' : 'soft_delete',
       oldValue: existing.data,
       newValue: response.data
     });
 
-    setStatusMessage(`${shouldRestore ? 'Record ripristinato' : 'Record disattivato'} in ${table}.`);
-    upsertLocalRow(table, response.data);
+    upsertLocalRow(table, response.data as RegistryRecord);
+    setStatusMessage(shouldRestore ? 'Record ripristinato.' : 'Record disattivato.');
   }
 
-  async function onCreateProdotto(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    await createRecord('prodotti_grezzi', {
-      nome: String(formData.get('nome') ?? ''),
-      descrizione: String(formData.get('descrizione') ?? '') || null
-    });
-    event.currentTarget.reset();
+  function extractPayload(table: RegistryTable, formData: FormData): Record<string, unknown> {
+    switch (table) {
+      case 'prodotti_grezzi':
+        return {
+          nome: normalizeString(formData.get('nome')),
+          descrizione: normalizeString(formData.get('descrizione')) || null
+        };
+      case 'varieta':
+        return {
+          nome: normalizeString(formData.get('nome')),
+          descrizione: normalizeString(formData.get('descrizione')) || null,
+          prodotto_grezzo_id: normalizeString(formData.get('prodotto_grezzo_id'))
+        };
+      case 'articoli':
+        return {
+          nome: normalizeString(formData.get('nome')),
+          descrizione: normalizeString(formData.get('descrizione')) || null,
+          peso_per_collo: Number(normalizeString(formData.get('peso_per_collo')) || '0'),
+          peso_variabile: normalizeString(formData.get('peso_variabile')) === 'on',
+          vincolo_prodotto_grezzo_id: normalizeString(formData.get('vincolo_prodotto_grezzo_id')) || null,
+          vincolo_varieta_id: normalizeString(formData.get('vincolo_varieta_id')) || null
+        };
+      case 'imballaggi_secondari':
+        return {
+          nome: normalizeString(formData.get('nome')),
+          descrizione: normalizeString(formData.get('descrizione')) || null,
+          tara_kg: parseNumberOrNull(normalizeString(formData.get('tara_kg'))),
+          lunghezza_cm: parseNumberOrNull(normalizeString(formData.get('lunghezza_cm'))),
+          larghezza_cm: parseNumberOrNull(normalizeString(formData.get('larghezza_cm'))),
+          altezza_cm: parseNumberOrNull(normalizeString(formData.get('altezza_cm')))
+        };
+      case 'linee':
+        return {
+          nome: normalizeString(formData.get('nome')),
+          descrizione: normalizeString(formData.get('descrizione')) || null,
+          ordine: parseNumberOrNull(normalizeString(formData.get('ordine')))
+        };
+      case 'sigle_lotto':
+        return {
+          codice: normalizeString(formData.get('codice')),
+          produttore: normalizeString(formData.get('produttore')),
+          prodotto_grezzo_id: normalizeString(formData.get('prodotto_grezzo_id')),
+          varieta_id: normalizeString(formData.get('varieta_id')),
+          campo: normalizeString(formData.get('campo')) || null
+        };
+    }
   }
 
-  async function onCreateVarieta(event: FormEvent<HTMLFormElement>) {
+  async function onSubmitModal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!modalState) {
+      return;
+    }
+
     const formData = new FormData(event.currentTarget);
-    await createRecord('varieta', {
-      nome: String(formData.get('nome') ?? ''),
-      descrizione: String(formData.get('descrizione') ?? '') || null,
-      prodotto_grezzo_id: String(formData.get('prodotto_grezzo_id') ?? '')
-    });
-    event.currentTarget.reset();
+    const payload = extractPayload(modalState.table, formData);
+
+    const success =
+      modalState.mode === 'create'
+        ? await createRecord(modalState.table, payload)
+        : await editRecord(modalState.table, modalState.row.id, payload);
+
+    if (success) {
+      setModalState(null);
+    }
   }
 
-  async function onCreateArticolo(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    await createRecord('articoli', {
-      nome: String(formData.get('nome') ?? ''),
-      descrizione: String(formData.get('descrizione') ?? '') || null,
-      peso_per_collo: Number(formData.get('peso_per_collo') ?? 0),
-      peso_variabile: formData.get('peso_variabile') === 'on',
-      vincolo_prodotto_grezzo_id: String(formData.get('vincolo_prodotto_grezzo_id') ?? '') || null,
-      vincolo_varieta_id: String(formData.get('vincolo_varieta_id') ?? '') || null
-    });
-    event.currentTarget.reset();
-  }
+  function renderFormFields(table: RegistryTable, row?: RegistryRecord) {
+    const selectedProductId =
+      table === 'sigle_lotto' && row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : undefined;
 
-  async function onCreateImballaggio(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    await createRecord('imballaggi_secondari', {
-      nome: String(formData.get('nome') ?? ''),
-      descrizione: String(formData.get('descrizione') ?? '') || null,
-      tara_kg: parseNumberOrNull(String(formData.get('tara_kg') ?? '')),
-      lunghezza_cm: parseNumberOrNull(String(formData.get('lunghezza_cm') ?? '')),
-      larghezza_cm: parseNumberOrNull(String(formData.get('larghezza_cm') ?? '')),
-      altezza_cm: parseNumberOrNull(String(formData.get('altezza_cm') ?? ''))
-    });
-    event.currentTarget.reset();
-  }
+    const filteredVarieta = selectedProductId
+      ? data.varieta.filter((item) => item.prodotto_grezzo_id === selectedProductId)
+      : data.varieta;
 
-  async function onCreateLinea(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    await createRecord('linee', {
-      nome: String(formData.get('nome') ?? ''),
-      descrizione: String(formData.get('descrizione') ?? '') || null,
-      ordine: parseNumberOrNull(String(formData.get('ordine') ?? ''))
-    });
-    event.currentTarget.reset();
-  }
-
-  async function onCreateSigla(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    await createRecord('sigle_lotto', {
-      codice: String(formData.get('codice') ?? ''),
-      produttore: String(formData.get('produttore') ?? ''),
-      prodotto_grezzo_id: String(formData.get('prodotto_grezzo_id') ?? ''),
-      varieta_id: String(formData.get('varieta_id') ?? ''),
-      campo: String(formData.get('campo') ?? '') || null
-    });
-    event.currentTarget.reset();
+    switch (table) {
+      case 'prodotti_grezzi':
+        return (
+          <>
+            <label className="grid gap-1 text-sm">
+              Nome
+              <input name="nome" defaultValue={row && 'nome' in row ? row.nome : ''} required className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Descrizione
+              <input name="descrizione" defaultValue={row && 'descrizione' in row ? (row.descrizione ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+          </>
+        );
+      case 'varieta':
+        return (
+          <>
+            <label className="grid gap-1 text-sm">
+              Nome
+              <input name="nome" defaultValue={row && 'nome' in row ? row.nome : ''} required className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Prodotto grezzo
+              <select
+                name="prodotto_grezzo_id"
+                defaultValue={row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : ''}
+                required
+                className="rounded-md border border-slate-300 px-3 py-2"
+              >
+                <option value="">Seleziona prodotto</option>
+                {data.prodottiGrezzi.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              Descrizione
+              <input name="descrizione" defaultValue={row && 'descrizione' in row ? (row.descrizione ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+          </>
+        );
+      case 'articoli':
+        return (
+          <>
+            <label className="grid gap-1 text-sm">
+              Nome
+              <input name="nome" defaultValue={row && 'nome' in row ? row.nome : ''} required className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Peso per collo (kg)
+              <input
+                type="number"
+                name="peso_per_collo"
+                min="0"
+                step="0.01"
+                defaultValue={row && 'peso_per_collo' in row ? row.peso_per_collo : ''}
+                required
+                className="rounded-md border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Vincolo prodotto grezzo
+              <select
+                name="vincolo_prodotto_grezzo_id"
+                defaultValue={row && 'vincolo_prodotto_grezzo_id' in row ? (row.vincolo_prodotto_grezzo_id ?? '') : ''}
+                className="rounded-md border border-slate-300 px-3 py-2"
+              >
+                <option value="">Nessun vincolo</option>
+                {data.prodottiGrezzi.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              Vincolo varietà
+              <select
+                name="vincolo_varieta_id"
+                defaultValue={row && 'vincolo_varieta_id' in row ? (row.vincolo_varieta_id ?? '') : ''}
+                className="rounded-md border border-slate-300 px-3 py-2"
+              >
+                <option value="">Nessun vincolo</option>
+                {data.varieta.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              Descrizione
+              <input name="descrizione" defaultValue={row && 'descrizione' in row ? (row.descrizione ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                name="peso_variabile"
+                defaultChecked={Boolean(row && 'peso_variabile' in row ? row.peso_variabile : false)}
+              />
+              Peso variabile
+            </label>
+          </>
+        );
+      case 'imballaggi_secondari':
+        return (
+          <>
+            <label className="grid gap-1 text-sm">
+              Nome
+              <input name="nome" defaultValue={row && 'nome' in row ? row.nome : ''} required className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Tara (kg)
+              <input type="number" step="0.01" name="tara_kg" defaultValue={row && 'tara_kg' in row ? (row.tara_kg ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Lunghezza (cm)
+              <input type="number" step="0.01" name="lunghezza_cm" defaultValue={row && 'lunghezza_cm' in row ? (row.lunghezza_cm ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Larghezza (cm)
+              <input type="number" step="0.01" name="larghezza_cm" defaultValue={row && 'larghezza_cm' in row ? (row.larghezza_cm ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Altezza (cm)
+              <input type="number" step="0.01" name="altezza_cm" defaultValue={row && 'altezza_cm' in row ? (row.altezza_cm ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm md:col-span-2">
+              Descrizione
+              <input name="descrizione" defaultValue={row && 'descrizione' in row ? (row.descrizione ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+          </>
+        );
+      case 'linee':
+        return (
+          <>
+            <label className="grid gap-1 text-sm">
+              Nome
+              <input name="nome" defaultValue={row && 'nome' in row ? row.nome : ''} required className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Ordine
+              <input type="number" name="ordine" defaultValue={row && 'ordine' in row ? (row.ordine ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm md:col-span-2">
+              Descrizione
+              <input name="descrizione" defaultValue={row && 'descrizione' in row ? (row.descrizione ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+          </>
+        );
+      case 'sigle_lotto':
+        return (
+          <>
+            <label className="grid gap-1 text-sm">
+              Codice
+              <input name="codice" defaultValue={row && 'codice' in row ? row.codice : ''} required className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Produttore
+              <input name="produttore" defaultValue={row && 'produttore' in row ? row.produttore : ''} required className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Prodotto grezzo
+              <select
+                name="prodotto_grezzo_id"
+                defaultValue={row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : ''}
+                required
+                className="rounded-md border border-slate-300 px-3 py-2"
+              >
+                <option value="">Seleziona prodotto</option>
+                {data.prodottiGrezzi.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              Varietà
+              <select
+                name="varieta_id"
+                defaultValue={row && 'varieta_id' in row ? row.varieta_id : ''}
+                required
+                className="rounded-md border border-slate-300 px-3 py-2"
+              >
+                <option value="">Seleziona varietà</option>
+                {filteredVarieta.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm md:col-span-2">
+              Campo
+              <input name="campo" defaultValue={row && 'campo' in row ? (row.campo ?? '') : ''} className="rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+          </>
+        );
+    }
   }
 
   return (
-    <section className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Anagrafiche</h1>
-        <p className="text-sm text-secondary">
-          Gestione completa CRUD con audit log e soft delete su tutte le entità anagrafiche.
-        </p>
-        {statusMessage && <p className="mt-2 rounded border border-slate-200 bg-white p-2 text-sm">{statusMessage}</p>}
-      </div>
+    <section className="space-y-6 px-4 py-6 md:px-6">
+      <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">Anagrafiche</h1>
+        <p className="mt-1 text-sm text-slate-600">Interfaccia gestionale con tab, ordinamento colonne, paginazione e CRUD completo.</p>
+        {statusMessage ? <p className="mt-3 rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700">{statusMessage}</p> : null}
+      </header>
 
-      <article className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-medium">Schema relazionale (vista rapida)</h2>
-        <p className="mt-2 text-sm text-secondary">
-          prodotti_grezzi 1→N varietà, prodotti_grezzi/varietà 1→N sigle_lotto, e articoli con vincoli opzionali su
-          prodotto grezzo e varietà.
-        </p>
-        <pre className="mt-3 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
-{`registry.prodotti_grezzi
-  ├── registry.varieta (prodotto_grezzo_id)
-  │     └── registry.sigle_lotto (varieta_id)
-  ├── registry.sigle_lotto (prodotto_grezzo_id)
-  └── registry.articoli (vincolo_prodotto_grezzo_id)
-        └── registry.articoli (vincolo_varieta_id)
-
-registry.linee
-registry.imballaggi_secondari`}
-        </pre>
-      </article>
-
-      <article className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-medium">Prodotti grezzi</h2>
-        <form className="grid gap-2 md:grid-cols-3" onSubmit={onCreateProdotto}>
-          <input name="nome" required placeholder="Nome" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="descrizione" placeholder="Descrizione" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <button type="submit" className="rounded bg-primary px-4 py-2 text-sm text-white">Aggiungi</button>
-        </form>
-        <div className="space-y-2">
-          {data.prodottiGrezzi.map((row) => (
-            <form key={row.id} className="grid gap-2 rounded border border-slate-200 p-2 md:grid-cols-4" onSubmit={async (event) => {
-              event.preventDefault();
-              const formData = new FormData(event.currentTarget);
-              await updateRecord('prodotti_grezzi', row.id, {
-                nome: String(formData.get('nome') ?? ''),
-                descrizione: String(formData.get('descrizione') ?? '') || null
-              });
-            }}>
-              <input name="nome" defaultValue={row.nome} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="descrizione" defaultValue={row.descrizione ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <div className="flex items-center gap-2">
-                <button type="submit" className="rounded bg-slate-900 px-3 py-2 text-xs text-white">Salva</button>
-                <button type="button" onClick={() => softDeleteRecord('prodotti_grezzi', row.id, row.is_active === false)} className="rounded border border-slate-300 px-3 py-2 text-xs">{row.is_active === false ? 'Ripristina' : 'Disattiva'}</button>
-              </div>
-              <p className="text-xs text-secondary">{row.is_active === false ? 'Disattivato' : 'Attivo'}</p>
-            </form>
+      <nav className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+        <ul className="flex min-w-max gap-2">
+          {TAB_CONFIG.map((tab) => (
+            <li key={tab.key}>
+              <button
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                  activeTab === tab.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            </li>
           ))}
+        </ul>
+      </nav>
+
+      <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 md:px-5">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">{TAB_CONFIG.find((tab) => tab.key === activeTab)?.label}</h2>
+            <p className="text-sm text-slate-600">{TAB_CONFIG.find((tab) => tab.key === activeTab)?.description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setModalState({ mode: 'create', table: activeTab })}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white"
+          >
+            + Nuovo record
+          </button>
         </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                {columns.map((column) => {
+                  const currentSort = sortState[activeTab];
+                  const isSorted = currentSort.key === column.key;
+                  const direction = isSorted ? (currentSort.direction === 'asc' ? '↑' : '↓') : '';
+
+                  return (
+                    <th key={column.key} className="px-4 py-3 text-left font-semibold text-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSortState((current) => {
+                            const currentConfig = current[activeTab];
+                            const nextDirection: SortDirection =
+                              currentConfig.key === column.key && currentConfig.direction === 'asc' ? 'desc' : 'asc';
+                            return { ...current, [activeTab]: { key: column.key, direction: nextDirection } };
+                          });
+                        }}
+                        className="inline-flex items-center gap-1"
+                      >
+                        {column.label} <span className="text-xs text-slate-500">{direction}</span>
+                      </button>
+                    </th>
+                  );
+                })}
+                <th className="px-4 py-3 text-right font-semibold text-slate-700">Azioni</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginatedRows.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length + 1} className="px-4 py-6 text-center text-slate-500">
+                    Nessun record presente.
+                  </td>
+                </tr>
+              ) : (
+                paginatedRows.map((row) => (
+                  <tr key={row.id} className={row.is_active ? 'bg-white' : 'bg-slate-50 text-slate-500'}>
+                    {columns.map((column) => (
+                      <td key={`${row.id}-${column.key}`} className="px-4 py-3">
+                        {column.render(row)}
+                      </td>
+                    ))}
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setModalState({ mode: 'edit', table: activeTab, row })}
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium"
+                        >
+                          Modifica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void toggleRecordActive(activeTab, row);
+                          }}
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium"
+                        >
+                          {row.is_active ? 'Disattiva' : 'Ripristina'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <footer className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600 md:px-5">
+          <span>
+            Pagina {currentPage} di {totalPages} • {tableRows.length} record
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(activeTab, currentPage - 1)}
+              disabled={currentPage === 1}
+              className="rounded-md border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Precedente
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(activeTab, currentPage + 1)}
+              disabled={currentPage >= totalPages}
+              className="rounded-md border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Successiva
+            </button>
+          </div>
+        </footer>
       </article>
 
-      <article className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-medium">Varietà</h2>
-        <form className="grid gap-2 md:grid-cols-4" onSubmit={onCreateVarieta}>
-          <input name="nome" required placeholder="Nome" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <select name="prodotto_grezzo_id" required className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">Prodotto grezzo</option>{data.prodottiGrezzi.map((prodotto) => (<option key={prodotto.id} value={prodotto.id}>{prodotto.nome}</option>))}</select>
-          <input name="descrizione" placeholder="Descrizione" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <button type="submit" className="rounded bg-primary px-4 py-2 text-sm text-white">Aggiungi</button>
-        </form>
-        <div className="space-y-2">
-          {data.varieta.map((row) => (
-            <form key={row.id} className="grid gap-2 rounded border border-slate-200 p-2 md:grid-cols-5" onSubmit={async (event) => {
-              event.preventDefault();
-              const formData = new FormData(event.currentTarget);
-              await updateRecord('varieta', row.id, {
-                nome: String(formData.get('nome') ?? ''),
-                descrizione: String(formData.get('descrizione') ?? '') || null,
-                prodotto_grezzo_id: String(formData.get('prodotto_grezzo_id') ?? '')
-              });
-            }}>
-              <input name="nome" defaultValue={row.nome} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <select name="prodotto_grezzo_id" defaultValue={row.prodotto_grezzo_id} className="rounded border border-slate-300 px-3 py-2 text-sm">{data.prodottiGrezzi.map((prodotto) => (<option key={prodotto.id} value={prodotto.id}>{prodotto.nome}</option>))}</select>
-              <input name="descrizione" defaultValue={row.descrizione ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <div className="flex items-center gap-2">
-                <button type="submit" className="rounded bg-slate-900 px-3 py-2 text-xs text-white">Salva</button>
-                <button type="button" onClick={() => softDeleteRecord('varieta', row.id, row.is_active === false)} className="rounded border border-slate-300 px-3 py-2 text-xs">{row.is_active === false ? 'Ripristina' : 'Disattiva'}</button>
-              </div>
-              <p className="text-xs text-secondary">{row.is_active === false ? 'Disattivato' : 'Attivo'}</p>
-            </form>
-          ))}
-        </div>
-      </article>
-
-      <article className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-medium">Articoli</h2>
-        <form className="grid gap-2 md:grid-cols-3" onSubmit={onCreateArticolo}>
-          <input name="nome" required placeholder="Nome" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="peso_per_collo" type="number" step="0.01" min="0" required placeholder="Peso per collo" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <label className="flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm"><input type="checkbox" name="peso_variabile" /> Peso variabile</label>
-          <select name="vincolo_prodotto_grezzo_id" className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">Nessun vincolo prodotto</option>{data.prodottiGrezzi.map((prodotto) => (<option key={prodotto.id} value={prodotto.id}>{prodotto.nome}</option>))}</select>
-          <select name="vincolo_varieta_id" className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">Nessun vincolo varietà</option>{data.varieta.map((varieta) => (<option key={varieta.id} value={varieta.id}>{varieta.nome}</option>))}</select>
-          <input name="descrizione" placeholder="Descrizione" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <button type="submit" className="rounded bg-primary px-4 py-2 text-sm text-white md:col-span-3">Aggiungi</button>
-        </form>
-        <div className="space-y-2">
-          {data.articoli.map((row) => (
-            <form key={row.id} className="grid gap-2 rounded border border-slate-200 p-2 md:grid-cols-6" onSubmit={async (event) => {
-              event.preventDefault();
-              const formData = new FormData(event.currentTarget);
-              await updateRecord('articoli', row.id, {
-                nome: String(formData.get('nome') ?? ''),
-                descrizione: String(formData.get('descrizione') ?? '') || null,
-                peso_per_collo: Number(formData.get('peso_per_collo') ?? 0),
-                peso_variabile: formData.get('peso_variabile') === 'on',
-                vincolo_prodotto_grezzo_id: String(formData.get('vincolo_prodotto_grezzo_id') ?? '') || null,
-                vincolo_varieta_id: String(formData.get('vincolo_varieta_id') ?? '') || null
-              });
-            }}>
-              <input name="nome" defaultValue={row.nome} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="peso_per_collo" type="number" step="0.01" min="0" defaultValue={row.peso_per_collo} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <label className="flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm"><input type="checkbox" name="peso_variabile" defaultChecked={row.peso_variabile} /> Variabile</label>
-              <select name="vincolo_prodotto_grezzo_id" defaultValue={row.vincolo_prodotto_grezzo_id ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">Nessun vincolo prodotto</option>{data.prodottiGrezzi.map((prodotto) => (<option key={prodotto.id} value={prodotto.id}>{prodotto.nome}</option>))}</select>
-              <select name="vincolo_varieta_id" defaultValue={row.vincolo_varieta_id ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">Nessun vincolo varietà</option>{data.varieta.map((varieta) => (<option key={varieta.id} value={varieta.id}>{varieta.nome}</option>))}</select>
-              <input name="descrizione" defaultValue={row.descrizione ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <div className="flex items-center gap-2 md:col-span-6">
-                <button type="submit" className="rounded bg-slate-900 px-3 py-2 text-xs text-white">Salva</button>
-                <button type="button" onClick={() => softDeleteRecord('articoli', row.id, row.is_active === false)} className="rounded border border-slate-300 px-3 py-2 text-xs">{row.is_active === false ? 'Ripristina' : 'Disattiva'}</button>
-                <span className="text-xs text-secondary">{row.is_active === false ? 'Disattivato' : 'Attivo'}</span>
-              </div>
-            </form>
-          ))}
-        </div>
-      </article>
-
-      <article className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-medium">Imballaggi secondari</h2>
-        <form className="grid gap-2 md:grid-cols-3" onSubmit={onCreateImballaggio}>
-          <input name="nome" required placeholder="Nome" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="descrizione" placeholder="Descrizione" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="tara_kg" type="number" step="0.01" placeholder="Tara kg" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="lunghezza_cm" type="number" step="0.01" placeholder="Lunghezza cm" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="larghezza_cm" type="number" step="0.01" placeholder="Larghezza cm" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="altezza_cm" type="number" step="0.01" placeholder="Altezza cm" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <button type="submit" className="rounded bg-primary px-4 py-2 text-sm text-white md:col-span-3">Aggiungi</button>
-        </form>
-        <div className="space-y-2">
-          {data.imballaggi.map((row) => (
-            <form key={row.id} className="grid gap-2 rounded border border-slate-200 p-2 md:grid-cols-7" onSubmit={async (event) => {
-              event.preventDefault();
-              const formData = new FormData(event.currentTarget);
-              await updateRecord('imballaggi_secondari', row.id, {
-                nome: String(formData.get('nome') ?? ''),
-                descrizione: String(formData.get('descrizione') ?? '') || null,
-                tara_kg: parseNumberOrNull(String(formData.get('tara_kg') ?? '')),
-                lunghezza_cm: parseNumberOrNull(String(formData.get('lunghezza_cm') ?? '')),
-                larghezza_cm: parseNumberOrNull(String(formData.get('larghezza_cm') ?? '')),
-                altezza_cm: parseNumberOrNull(String(formData.get('altezza_cm') ?? ''))
-              });
-            }}>
-              <input name="nome" defaultValue={row.nome} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="descrizione" defaultValue={row.descrizione ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="tara_kg" type="number" step="0.01" defaultValue={row.tara_kg ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="lunghezza_cm" type="number" step="0.01" defaultValue={row.lunghezza_cm ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="larghezza_cm" type="number" step="0.01" defaultValue={row.larghezza_cm ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="altezza_cm" type="number" step="0.01" defaultValue={row.altezza_cm ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <div className="flex items-center gap-2">
-                <button type="submit" className="rounded bg-slate-900 px-3 py-2 text-xs text-white">Salva</button>
-                <button type="button" onClick={() => softDeleteRecord('imballaggi_secondari', row.id, row.is_active === false)} className="rounded border border-slate-300 px-3 py-2 text-xs">{row.is_active === false ? 'Ripristina' : 'Disattiva'}</button>
-              </div>
-            </form>
-          ))}
-        </div>
-      </article>
-
-      <article className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-medium">Linee</h2>
-        <form className="grid gap-2 md:grid-cols-4" onSubmit={onCreateLinea}>
-          <input name="nome" required placeholder="Nome" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="ordine" type="number" placeholder="Ordine" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="descrizione" placeholder="Descrizione" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <button type="submit" className="rounded bg-primary px-4 py-2 text-sm text-white">Aggiungi</button>
-        </form>
-        <div className="space-y-2">
-          {data.linee.map((row) => (
-            <form key={row.id} className="grid gap-2 rounded border border-slate-200 p-2 md:grid-cols-5" onSubmit={async (event) => {
-              event.preventDefault();
-              const formData = new FormData(event.currentTarget);
-              await updateRecord('linee', row.id, {
-                nome: String(formData.get('nome') ?? ''),
-                ordine: parseNumberOrNull(String(formData.get('ordine') ?? '')),
-                descrizione: String(formData.get('descrizione') ?? '') || null
-              });
-            }}>
-              <input name="nome" defaultValue={row.nome} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="ordine" type="number" defaultValue={row.ordine ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="descrizione" defaultValue={row.descrizione ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <div className="flex items-center gap-2">
-                <button type="submit" className="rounded bg-slate-900 px-3 py-2 text-xs text-white">Salva</button>
-                <button type="button" onClick={() => softDeleteRecord('linee', row.id, row.is_active === false)} className="rounded border border-slate-300 px-3 py-2 text-xs">{row.is_active === false ? 'Ripristina' : 'Disattiva'}</button>
-              </div>
-              <p className="text-xs text-secondary">{row.is_active === false ? 'Disattivato' : 'Attivo'}</p>
-            </form>
-          ))}
-        </div>
-      </article>
-
-      <article className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-medium">Sigle lotto</h2>
-        <form className="grid gap-2 md:grid-cols-5" onSubmit={onCreateSigla}>
-          <input name="codice" required placeholder="Codice" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <input name="produttore" required placeholder="Produttore" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <select name="prodotto_grezzo_id" required className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">Prodotto grezzo</option>{data.prodottiGrezzi.map((prodotto) => (<option key={prodotto.id} value={prodotto.id}>{prodotto.nome}</option>))}</select>
-          <select name="varieta_id" required className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">Varietà</option>{data.varieta.map((varieta) => (<option key={varieta.id} value={varieta.id}>{varieta.nome}</option>))}</select>
-          <input name="campo" placeholder="Campo" className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <button type="submit" className="rounded bg-primary px-4 py-2 text-sm text-white md:col-span-5">Aggiungi</button>
-        </form>
-        <div className="space-y-2">
-          {data.sigleLotto.map((row) => (
-            <form key={row.id} className="grid gap-2 rounded border border-slate-200 p-2 md:grid-cols-7" onSubmit={async (event) => {
-              event.preventDefault();
-              const formData = new FormData(event.currentTarget);
-              await updateRecord('sigle_lotto', row.id, {
-                codice: String(formData.get('codice') ?? ''),
-                produttore: String(formData.get('produttore') ?? ''),
-                prodotto_grezzo_id: String(formData.get('prodotto_grezzo_id') ?? ''),
-                varieta_id: String(formData.get('varieta_id') ?? ''),
-                campo: String(formData.get('campo') ?? '') || null
-              });
-            }}>
-              <input name="codice" defaultValue={row.codice} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <input name="produttore" defaultValue={row.produttore} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <select name="prodotto_grezzo_id" defaultValue={row.prodotto_grezzo_id} className="rounded border border-slate-300 px-3 py-2 text-sm">{data.prodottiGrezzi.map((prodotto) => (<option key={prodotto.id} value={prodotto.id}>{prodotto.nome}</option>))}</select>
-              <select name="varieta_id" defaultValue={row.varieta_id} className="rounded border border-slate-300 px-3 py-2 text-sm">{data.varieta.map((varieta) => (<option key={varieta.id} value={varieta.id}>{varieta.nome}</option>))}</select>
-              <input name="campo" defaultValue={row.campo ?? ''} className="rounded border border-slate-300 px-3 py-2 text-sm" />
-              <div className="col-span-2 flex items-center gap-2">
-                <button type="submit" className="rounded bg-slate-900 px-3 py-2 text-xs text-white">Salva</button>
-                <button type="button" onClick={() => softDeleteRecord('sigle_lotto', row.id, row.is_active === false)} className="rounded border border-slate-300 px-3 py-2 text-xs">{row.is_active === false ? 'Ripristina' : 'Disattiva'}</button>
-                <span className="text-xs text-secondary">{prodottoById.get(row.prodotto_grezzo_id)} / {varietaById.get(row.varieta_id)}</span>
-              </div>
-            </form>
-          ))}
-        </div>
-      </article>
+      {modalState ? (
+        <ModalShell
+          title={`${modalState.mode === 'create' ? 'Nuovo' : 'Modifica'} ${TAB_CONFIG.find((item) => item.key === modalState.table)?.label}`}
+          onClose={() => setModalState(null)}
+        >
+          <form className="grid gap-4 md:grid-cols-2" onSubmit={onSubmitModal}>
+            {renderFormFields(modalState.table, modalState.mode === 'edit' ? modalState.row : undefined)}
+            <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setModalState(null)} className="rounded-md border border-slate-300 px-4 py-2 text-sm">
+                Annulla
+              </button>
+              <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+                {modalState.mode === 'create' ? 'Crea record' : 'Salva modifiche'}
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
     </section>
   );
 }
