@@ -613,11 +613,13 @@ CREATE INDEX idx_lav_stato    ON ops_2025.lavorazioni(stato);
 CREATE INDEX idx_lav_at       ON ops_2025.lavorazioni(aperta_at);
 CREATE INDEX idx_lav_lotto    ON ops_2025.lavorazioni(sigla_lotto, data_ingresso);
 CREATE INDEX idx_ped_lav      ON ops_2025.pedane(lavorazione_id);
-CREATE INDEX idx_ped_data     ON ops_2025.pedane((registrata_at::date));
+CREATE INDEX idx_ped_reg_at   ON ops_2025.pedane(registrata_at);
 CREATE INDEX idx_sca_lotto    ON ops_2025.scarti(sigla_lotto, data_ingresso);
 CREATE INDEX idx_audit_record ON audit.log(schema_name, table_name, record_id);
 CREATE INDEX idx_audit_actor  ON audit.log(actor_id);
 ```
+
+> Nota: evitare indici su espressioni derivate da `timestamptz` (es. `registrata_at::date` / `DATE(registrata_at)`) perché possono fallire con `ERROR: functions in index expression must be marked IMMUTABLE`. Per i filtri giornalieri usare range su `registrata_at` (es. `registrata_at >= :day AND registrata_at < :day + INTERVAL '1 day'`).
 
 ### Blocco 6 — Funzione ruolo e RLS
 ```sql
