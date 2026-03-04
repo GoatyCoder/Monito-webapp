@@ -1,15 +1,27 @@
+import { Wifi, WifiOff, RefreshCw, AlertTriangle } from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
+
 type ConnectionStatusProps = {
   mode: 'online' | 'offline' | 'syncing' | 'conflict';
 };
 
 export function ConnectionStatus({ mode }: ConnectionStatusProps) {
-  // Mappa visuale minima, da sostituire con stato reale rete/sync.
+  // Stato connessione reso più leggibile con badge e icone coerenti.
   const map = {
-    online: { label: '● Online', className: 'text-success' },
-    offline: { label: '⚠ Offline', className: 'text-accent' },
-    syncing: { label: '↻ Sincronizzazione...', className: 'text-primary' },
-    conflict: { label: '⛔ Conflitti', className: 'text-error' }
+    online: { label: 'Online', icon: Wifi, variant: 'success' as const },
+    offline: { label: 'Offline', icon: WifiOff, variant: 'accent' as const },
+    syncing: { label: 'Sincronizzazione', icon: RefreshCw, variant: 'default' as const },
+    conflict: { label: 'Conflitti', icon: AlertTriangle, variant: 'secondary' as const }
   };
 
-  return <span className={`text-xs font-medium ${map[mode].className}`}>{map[mode].label}</span>;
+  const current = map[mode];
+  const Icon = current.icon;
+
+  return (
+    <Badge variant={current.variant} className="gap-1.5">
+      <Icon className="h-3.5 w-3.5" />
+      {current.label}
+    </Badge>
+  );
 }

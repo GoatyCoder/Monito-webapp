@@ -51,7 +51,7 @@ Un Operatore può gestire più linee da una singola postazione. Più Operatori p
 |---|---|---|---|
 | Frontend | Next.js (App Router) | 14.x | Framework React, routing |
 | Styling | Tailwind CSS | 3.4.x | Utility-first CSS — nessun CSS custom |
-| Componenti UI | shadcn/ui | latest | Componenti accessibili prebuilt |
+| Componenti UI | shadcn/ui | latest | Componenti accessibili prebuilt (configurato) — componenti: input, select, badge, button, sheet, table |
 | Backend / DB | Supabase (PostgreSQL) | latest | Database, Auth, REST API, Realtime |
 | Offline / Sync | Dexie.js (IndexedDB) | 3.x | Storage locale per modalità offline |
 | Service Worker | next-pwa | latest | PWA per funzionamento offline |

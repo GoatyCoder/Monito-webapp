@@ -1,28 +1,35 @@
+import { Badge } from '@/components/ui/badge';
+
 type LineCardProps = {
   state: 'inactive' | 'active' | 'multi';
   canEdit: boolean;
 };
 
+const stateLabel: Record<LineCardProps['state'], string> = {
+  inactive: 'INATTIVA',
+  active: 'ATTIVA',
+  multi: 'MULTI'
+};
+
+const stateBadgeVariant: Record<LineCardProps['state'], 'secondary' | 'success' | 'accent'> = {
+  inactive: 'secondary',
+  active: 'success',
+  multi: 'accent'
+};
+
 export function LineCard({ state, canEdit }: LineCardProps) {
-  const accent =
-    state === 'inactive'
-      ? 'border-secondary opacity-70'
-      : state === 'active'
-        ? 'border-success'
-        : 'border-accent';
+  const accent = state === 'inactive' ? 'border-secondary opacity-70' : state === 'active' ? 'border-success' : 'border-accent';
 
   return (
     <article className={`rounded-lg border-l-4 bg-surface p-4 shadow-sm ${accent}`}>
-      {/* Titolo card linea. */}
+      {/* Badge stato aggiunto mantenendo il bordo laterale per coerenza visiva. */}
       <header className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Linea X</h2>
-        <span className="text-xs text-secondary">{state.toUpperCase()}</span>
+        <Badge variant={stateBadgeVariant[state]}>{stateLabel[state]}</Badge>
       </header>
 
-      {/* Corpo placeholder: nessun dato reale. */}
       <p className="mb-4 text-sm text-secondary">Lotto, articolo, statistiche e azioni saranno collegate ai dati runtime.</p>
 
-      {/* Azioni nascoste al Viewer secondo requisiti PRD. */}
       {canEdit ? (
         <div className="flex flex-wrap gap-2">
           <button className="rounded bg-primary px-3 py-1.5 text-xs text-white">+ Pedana</button>

@@ -437,3 +437,14 @@ dove prevista nello schema database. Vuoi procedere?"
 - Messaggio di stato persistente in testa pagina (successo o errore)
 - Righe disattivate visualizzate con contrasto ridotto (`bg-slate-50` + testo muted)
 - Empty state tabellare: `Nessun record presente.`
+
+## Changelog UI 2026-03-04
+
+- Header: introdotto `NavLink` client con evidenza route attiva (`text-primary`, `font-semibold`, `border-b-2`).
+- Connection status: stato visualizzato tramite `Badge` con icone `lucide-react` per online/offline/sync/conflict.
+- Summary bar: KPI con icone dedicate (`Activity`, `ClipboardList`, `Package`, `Boxes`, `Trash2`) e separatori verticali desktop.
+- Line card: badge stato (`secondary`/`success`/`accent`) nell'header mantenendo il bordo sinistro colorato esistente.
+- New work order form: campi uniformati con `Input` e check verde `CheckCircle2` quando Data e DOY sono sincronizzati.
+- FAB scarto: CTA aggiornata con `Button` UI e icona `Trash2`.
+- Anagrafiche: introdotto pannello filtri per sezione (sempre visibile), counter `Badge` per record attivi/totali e azioni inline con icone (`Save`, `Trash2`, `RotateCcw`).
+- Refinement anagrafiche: azioni riga convertite a icone-only (`Modifica`, `Elimina`, `Ripristina`), pannello filtri collassabile tramite icona funnel (apri/chiudi) con reset e dialog unico "Elimina" con scelta `Disattiva` o `Elimina definitiva`.

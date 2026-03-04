@@ -1,7 +1,11 @@
 'use client';
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { Pencil, RotateCcw, Trash2 } from 'lucide-react';
 
+import { RegistryFilters, type RegistryFilterField } from '@/components/anagrafiche/registry-filters';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { REGISTRY_SCHEMA } from '@/lib/config/db';
 import {
   createRegistryRow,
@@ -107,12 +111,7 @@ type ModalState =
 
 type ConfirmationState =
   | {
-      kind: 'toggle-active';
-      table: RegistryTable;
-      row: RegistryRecord;
-    }
-  | {
-      kind: 'hard-delete';
+      kind: 'delete';
       table: RegistryTable;
       row: RegistryRecord;
     }
@@ -130,6 +129,8 @@ type CascadeTarget = {
   table: RegistryTable;
   row: RegistryRecord;
 };
+
+type FilterState = Record<RegistryTable, Record<string, string>>;
 
 const TAB_CONFIG: { key: RegistryTable; label: string; description: string }[] = [
   { key: 'prodotti_grezzi', label: 'Prodotti grezzi', description: 'Gestione materie prime di base' },
@@ -231,6 +232,17 @@ function getDefaultSortState(): Record<RegistryTable, SortConfig> {
     imballaggi_secondari: { key: 'nome', direction: 'asc' },
     linee: { key: 'ordine', direction: 'asc' },
     sigle_lotto: { key: 'codice', direction: 'asc' }
+  };
+}
+
+function getDefaultFilterState(): FilterState {
+  return {
+    prodotti_grezzi: { search: '' },
+    varieta: { search: '', prodottoGrezzoId: '' },
+    articoli: { search: '', prodottoGrezzoId: '' },
+    imballaggi_secondari: { search: '' },
+    linee: { search: '' },
+    sigle_lotto: { search: '', prodottoGrezzoId: '', varietaId: '' }
   };
 }
 
@@ -457,6 +469,7 @@ export function RegistryManager() {
   const [statusMessage, setStatusMessage] = useState('');
   const [modalState, setModalState] = useState<ModalState>(null);
   const [sortState, setSortState] = useState<Record<RegistryTable, SortConfig>>(getDefaultSortState);
+  const [filterState, setFilterState] = useState<FilterState>(getDefaultFilterState);
   const [pageState, setPageState] = useState<Record<RegistryTable, number>>({
     prodotti_grezzi: 1,
     varieta: 1,
@@ -469,7 +482,6 @@ export function RegistryManager() {
   const [confirmationState, setConfirmationState] = useState<ConfirmationState>(null);
 
   const supabase = useMemo(() => createSupabaseClient(), []);
-  const isAdmin = userIdentity?.role === 'admin';
 
   const prodottoById = useMemo(
     () => new Map(data.prodottiGrezzi.map((prodotto) => [prodotto.id, prodotto.nome])),
@@ -479,18 +491,104 @@ export function RegistryManager() {
 
   const columns = useMemo(() => getTableColumns(activeTab, prodottoById, varietaById), [activeTab, prodottoById, varietaById]);
 
+  const filterFields = useMemo<RegistryFilterField[]>(() => {
+    const activeProducts = data.prodottiGrezzi.filter((item) => item.is_active);
+    const selectedProductId = filterState[activeTab].prodottoGrezzoId ?? '';
+    const varietaOptions =
+      activeTab === 'sigle_lotto' && selectedProductId
+        ? data.varieta.filter((item) => item.is_active && item.prodotto_grezzo_id === selectedProductId)
+        : data.varieta.filter((item) => item.is_active);
+
+    switch (activeTab) {
+      case 'prodotti_grezzi':
+      case 'imballaggi_secondari':
+      case 'linee':
+        return [{ key: 'search', label: 'Ricerca', placeholder: 'Filtra per nome', type: 'text' }];
+      case 'varieta':
+        return [
+          { key: 'search', label: 'Ricerca', placeholder: 'Filtra per nome', type: 'text' },
+          {
+            key: 'prodottoGrezzoId',
+            label: 'Prodotto grezzo',
+            type: 'select',
+            options: [
+              { label: 'Tutti i prodotti', value: '' },
+              ...activeProducts.map((item) => ({ label: item.nome, value: item.id }))
+            ]
+          }
+        ];
+      case 'articoli':
+        return [
+          { key: 'search', label: 'Ricerca', placeholder: 'Filtra per nome', type: 'text' },
+          {
+            key: 'prodottoGrezzoId',
+            label: 'Prodotto grezzo',
+            type: 'select',
+            options: [
+              { label: 'Tutti', value: '' },
+              ...activeProducts.map((item) => ({ label: item.nome, value: item.id }))
+            ]
+          }
+        ];
+      case 'sigle_lotto':
+        return [
+          { key: 'search', label: 'Ricerca', placeholder: 'Filtra per codice o produttore', type: 'text' },
+          {
+            key: 'prodottoGrezzoId',
+            label: 'Prodotto grezzo',
+            type: 'select',
+            options: [{ label: 'Tutti i prodotti', value: '' }, ...activeProducts.map((item) => ({ label: item.nome, value: item.id }))]
+          },
+          {
+            key: 'varietaId',
+            label: 'Varietà',
+            type: 'select',
+            options: [{ label: 'Tutte le varietà', value: '' }, ...varietaOptions.map((item) => ({ label: item.nome, value: item.id }))]
+          }
+        ];
+    }
+  }, [activeTab, data.prodottiGrezzi, data.varieta, filterState]);
+
   const tableRows = useMemo(() => {
     const rows = getRowsByTable(data, activeTab);
+    const currentFilters = filterState[activeTab];
+    const search = (currentFilters.search ?? '').trim().toLowerCase();
+
+    const filtered = rows.filter((row) => {
+      switch (activeTab) {
+        case 'prodotti_grezzi':
+        case 'imballaggi_secondari':
+        case 'linee':
+          return !search || ('nome' in row && row.nome.toLowerCase().includes(search));
+        case 'varieta': {
+          const matchName = !search || ('nome' in row && row.nome.toLowerCase().includes(search));
+          const matchProduct = !currentFilters.prodottoGrezzoId || ('prodotto_grezzo_id' in row && row.prodotto_grezzo_id === currentFilters.prodottoGrezzoId);
+          return matchName && matchProduct;
+        }
+        case 'articoli': {
+          const matchName = !search || ('nome' in row && row.nome.toLowerCase().includes(search));
+          const selectedProduct = currentFilters.prodottoGrezzoId;
+          const matchProduct = !selectedProduct || ('vincolo_prodotto_grezzo_id' in row && (row.vincolo_prodotto_grezzo_id === selectedProduct || row.vincolo_prodotto_grezzo_id === null));
+          return matchName && matchProduct;
+        }
+        case 'sigle_lotto': {
+          const matchText = !search || ('codice' in row && row.codice.toLowerCase().includes(search)) || ('produttore' in row && row.produttore.toLowerCase().includes(search));
+          const matchProduct = !currentFilters.prodottoGrezzoId || ('prodotto_grezzo_id' in row && row.prodotto_grezzo_id === currentFilters.prodottoGrezzoId);
+          const matchVarieta = !currentFilters.varietaId || ('varieta_id' in row && row.varieta_id === currentFilters.varietaId);
+          return matchText && matchProduct && matchVarieta;
+        }
+      }
+    });
     const sort = sortState[activeTab];
     const column = columns.find((item) => item.key === sort.key) ?? columns[0];
 
-    const sorted = [...rows].sort((rowA, rowB) => {
+    const sorted = [...filtered].sort((rowA, rowB) => {
       const result = compareValues(column.getValue(rowA), column.getValue(rowB));
       return sort.direction === 'asc' ? result : -result;
     });
 
     return sorted;
-  }, [activeTab, columns, data, sortState]);
+  }, [activeTab, columns, data, filterState, sortState]);
 
   const totalPages = Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE));
   const currentPage = Math.min(pageState[activeTab], totalPages);
@@ -498,6 +596,12 @@ export function RegistryManager() {
 
   const setPage = (table: RegistryTable, nextPage: number) => {
     setPageState((current) => ({ ...current, [table]: Math.max(1, nextPage) }));
+  };
+
+  const resetFilters = (table: RegistryTable) => {
+    const defaultFilters = getDefaultFilterState();
+    setFilterState((current) => ({ ...current, [table]: defaultFilters[table] }));
+    setPage(table, 1);
   };
 
   function upsertLocalRow(table: RegistryTable, row: RegistryRecord) {
@@ -1105,6 +1209,13 @@ export function RegistryManager() {
     }
   }
 
+
+  const sectionRows = getRowsByTable(data, activeTab);
+  const activeRowsCount = sectionRows.filter((row) => row.is_active).length;
+  const totalRowsCount = sectionRows.length;
+  const sectionCounterLabel = totalRowsCount > activeRowsCount ? `${activeRowsCount} attivi / ${totalRowsCount} totali` : `${activeRowsCount} attivi`;
+
+
   return (
     <section className="space-y-6 px-4 py-6 md:px-6">
       <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1134,16 +1245,33 @@ export function RegistryManager() {
       <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 md:px-5">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">{TAB_CONFIG.find((tab) => tab.key === activeTab)?.label}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-slate-900">{TAB_CONFIG.find((tab) => tab.key === activeTab)?.label}</h2>
+              <Badge variant="secondary">{sectionCounterLabel}</Badge>
+            </div>
             <p className="text-sm text-slate-600">{TAB_CONFIG.find((tab) => tab.key === activeTab)?.description}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setModalState({ mode: 'create', table: activeTab })}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white"
-          >
+          <Button type="button" onClick={() => setModalState({ mode: 'create', table: activeTab })}>
             + Nuovo record
-          </button>
+          </Button>
+        </div>
+
+        <div className="px-4 py-3 md:px-5">
+          <RegistryFilters
+            fields={filterFields}
+            values={filterState[activeTab]}
+            onReset={() => resetFilters(activeTab)}
+            onChange={(key, value) => {
+              setFilterState((current) => {
+                const nextFilters = { ...current[activeTab], [key]: value };
+                if (activeTab === 'sigle_lotto' && key === 'prodottoGrezzoId') {
+                  nextFilters.varietaId = '';
+                }
+                return { ...current, [activeTab]: nextFilters };
+              });
+              setPage(activeTab, 1);
+            }}
+          />
         </div>
 
         <div className="overflow-x-auto">
@@ -1186,7 +1314,7 @@ export function RegistryManager() {
                 </tr>
               ) : (
                 paginatedRows.map((row) => (
-                  <tr key={row.id} className={row.is_active ? 'bg-white' : 'bg-slate-50 text-slate-500'}>
+                  <tr key={row.id} className={row.is_active ? 'bg-white' : 'bg-slate-50 opacity-60 text-slate-500'}>
                     {columns.map((column) => (
                       <td key={`${row.id}-${column.key}`} className="px-4 py-3">
                         {column.render(row)}
@@ -1194,29 +1322,39 @@ export function RegistryManager() {
                     ))}
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => setModalState({ mode: 'edit', table: activeTab, row })}
-                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium"
+                          aria-label="Modifica record"
+                          title="Modifica"
                         >
-                          Modifica
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmationState({ kind: 'toggle-active', table: activeTab, row })}
-                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium"
-                        >
-                          {row.is_active ? 'Disattiva' : 'Ripristina'}
-                        </button>
-                        {isAdmin ? (
-                          <button
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        {row.is_active ? (
+                          <Button
                             type="button"
-                            onClick={() => setConfirmationState({ kind: 'hard-delete', table: activeTab, row })}
-                            className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setConfirmationState({ kind: 'delete', table: activeTab, row })}
+                            aria-label="Elimina record"
+                            title="Elimina"
                           >
-                            Elimina definitiva
-                          </button>
-                        ) : null}
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void toggleRecordActive(activeTab, row)}
+                            aria-label="Ripristina record"
+                            title="Ripristina"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1272,21 +1410,14 @@ export function RegistryManager() {
 
       {confirmationState ? (
         <ModalShell
-          title={confirmationState.kind === 'hard-delete' ? 'Conferma eliminazione definitiva' : 'Conferma operazione'}
+          title="Elimina record"
           onClose={() => setConfirmationState(null)}
         >
           <div className="space-y-4">
-            {confirmationState.kind === 'hard-delete' ? (
-              <p className="text-sm text-slate-700">
-                Stai per eliminare definitivamente questo record. L&apos;operazione è irreversibile e, se configurato nel database,
-                verrà applicata anche la cascata ON DELETE CASCADE ai dati collegati. Vuoi procedere?
-              </p>
-            ) : (
-              <p className="text-sm text-slate-700">
-                Confermi di voler {confirmationState.row.is_active ? 'disattivare' : 'ripristinare'} il record selezionato?
-              </p>
-            )}
-            <div className="flex justify-end gap-2 pt-2">
+            <p className="text-sm text-slate-700">
+              Scegli se disattivare il record (soft delete) oppure eliminarlo definitivamente.
+            </p>
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setConfirmationState(null)}
@@ -1299,18 +1430,22 @@ export function RegistryManager() {
                 onClick={() => {
                   const currentConfirmation = confirmationState;
                   setConfirmationState(null);
-                  if (currentConfirmation.kind === 'hard-delete') {
-                    void hardDeleteRecord(currentConfirmation.table, currentConfirmation.row);
-                    return;
-                  }
-
                   void toggleRecordActive(currentConfirmation.table, currentConfirmation.row);
                 }}
-                className={`rounded-md px-4 py-2 text-sm font-semibold text-white ${
-                  confirmationState.kind === 'hard-delete' ? 'bg-red-700' : 'bg-slate-900'
-                }`}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
               >
-                Conferma
+                Disattiva
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const currentConfirmation = confirmationState;
+                  setConfirmationState(null);
+                  void hardDeleteRecord(currentConfirmation.table, currentConfirmation.row);
+                }}
+                className="rounded-md bg-red-700 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Elimina definitiva
               </button>
             </div>
           </div>
