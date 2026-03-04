@@ -425,7 +425,7 @@ Eseguire su **Supabase → SQL Editor** nell'ordine indicato.
 -- ATTENZIONE: eseguire solo su DB con tabella vuota o dopo aver
 -- verificato che non esistano righe con chiusa_at valorizzato e aperta_at NULL.
 
-ALTER TABLE ops_2025.lavorazioni
+ALTER TABLE ops_2026.lavorazioni
   DROP COLUMN IF EXISTS stato,
   DROP COLUMN IF EXISTS sigla_lotto,
   ADD COLUMN  sigla_lotto_id            uuid
@@ -535,13 +535,13 @@ CREATE TABLE registry.sigle_lotto (
 );
 ```
 
-### Blocco 2 — Schema ops_2025
+### Blocco 2 — Schema ops_2026
 
-> Ripetere ogni 1 gennaio sostituendo `ops_2025` con `ops_YYYY`.
+> Ripetere ogni 1 gennaio sostituendo `ops_2026` con `ops_YYYY`.
 ```sql
-CREATE SCHEMA ops_2025;
+CREATE SCHEMA ops_2026;
 
-CREATE TABLE ops_2025.lavorazioni (
+CREATE TABLE ops_2026.lavorazioni (
   id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   linea_id                  uuid NOT NULL REFERENCES registry.linee(id),
   sigla_lotto_id            uuid NOT NULL REFERENCES registry.sigle_lotto(id),
@@ -563,26 +563,26 @@ CREATE TABLE ops_2025.lavorazioni (
     CHECK (chiusa_at IS NULL OR chiusa_at >= aperta_at)
 );
 
-CREATE TABLE ops_2025.pedane (
+CREATE TABLE ops_2026.pedane (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at     timestamptz DEFAULT now(),
   created_by     uuid NOT NULL REFERENCES auth.users(id),
   updated_at     timestamptz,
   updated_by     uuid REFERENCES auth.users(id),
   codice_pedana  text NOT NULL UNIQUE,
-  lavorazione_id uuid NOT NULL REFERENCES ops_2025.lavorazioni(id) ON DELETE CASCADE,
+  lavorazione_id uuid NOT NULL REFERENCES ops_2026.lavorazioni(id) ON DELETE CASCADE,
   numero_colli   integer NOT NULL,
   peso_totale    numeric NOT NULL,
   registrata_at  timestamptz NOT NULL DEFAULT now(),
   registrata_da  uuid NOT NULL REFERENCES auth.users(id)
 );
 
-CREATE TABLE ops_2025.pedane_daily_counter (
+CREATE TABLE ops_2026.pedane_daily_counter (
   day        date PRIMARY KEY DEFAULT CURRENT_DATE,
   last_value integer NOT NULL
 );
 
-CREATE TABLE ops_2025.scarti (
+CREATE TABLE ops_2026.scarti (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at    timestamptz DEFAULT now(),
   created_by    uuid NOT NULL REFERENCES auth.users(id),
@@ -601,7 +601,7 @@ CREATE TABLE ops_2025.scarti (
 
 > Ripetere ogni anno aggiornando lo schema.
 ```sql
-CREATE OR REPLACE FUNCTION ops_2025.generate_codice_pedana()
+CREATE OR REPLACE FUNCTION ops_2026.generate_codice_pedana()
 RETURNS TRIGGER AS $$
 DECLARE
   anno        text;
@@ -612,10 +612,10 @@ BEGIN
   anno    := TO_CHAR(oggi, 'YY');
   doy_val := LPAD(EXTRACT(DOY FROM oggi)::text, 3, '0');
 
-  INSERT INTO ops_2025.pedane_daily_counter (day, last_value)
+  INSERT INTO ops_2026.pedane_daily_counter (day, last_value)
   VALUES (oggi, 1)
   ON CONFLICT (day) DO UPDATE
-  SET last_value = ops_2025.pedane_daily_counter.last_value + 1
+  SET last_value = ops_2026.pedane_daily_counter.last_value + 1
   RETURNING last_value INTO progressivo;
 
   NEW.codice_pedana := 'P' || anno || '-' || doy_val || '-' || LPAD(progressivo::text, 4, '0');
@@ -624,8 +624,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_codice_pedana
-BEFORE INSERT ON ops_2025.pedane
-FOR EACH ROW EXECUTE FUNCTION ops_2025.generate_codice_pedana();
+BEFORE INSERT ON ops_2026.pedane
+FOR EACH ROW EXECUTE FUNCTION ops_2026.generate_codice_pedana();
 ```
 
 > Questa implementazione elimina la race condition del calcolo progressivo e mantiene l'univocità anche con inserimenti concorrenti.
@@ -652,12 +652,12 @@ CREATE TABLE audit.log (
 
 ### Blocco 5 — Indici
 ```sql
-CREATE INDEX idx_lav_linea    ON ops_2025.lavorazioni(linea_id);
-CREATE INDEX idx_lav_at       ON ops_2025.lavorazioni(aperta_at);
-CREATE INDEX idx_lav_lotto    ON ops_2025.lavorazioni(sigla_lotto_id, data_ingresso);
-CREATE INDEX idx_ped_lav      ON ops_2025.pedane(lavorazione_id);
-CREATE INDEX idx_ped_reg_at   ON ops_2025.pedane(registrata_at);
-CREATE INDEX idx_sca_lotto    ON ops_2025.scarti(sigla_lotto, data_ingresso);
+CREATE INDEX idx_lav_linea    ON ops_2026.lavorazioni(linea_id);
+CREATE INDEX idx_lav_at       ON ops_2026.lavorazioni(aperta_at);
+CREATE INDEX idx_lav_lotto    ON ops_2026.lavorazioni(sigla_lotto_id, data_ingresso);
+CREATE INDEX idx_ped_lav      ON ops_2026.pedane(lavorazione_id);
+CREATE INDEX idx_ped_reg_at   ON ops_2026.pedane(registrata_at);
+CREATE INDEX idx_sca_lotto    ON ops_2026.scarti(sigla_lotto, data_ingresso);
 CREATE INDEX idx_audit_record ON audit.log(schema_name, table_name, record_id);
 CREATE INDEX idx_audit_actor  ON audit.log(actor_id);
 ```
@@ -692,14 +692,14 @@ BEGIN
   END LOOP;
 END $$;
 
-ALTER TABLE ops_2025.lavorazioni ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ops_2025.pedane      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ops_2025.scarti      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ops_2026.lavorazioni ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ops_2026.pedane      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ops_2026.scarti      ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['ops_2025.lavorazioni','ops_2025.pedane','ops_2025.scarti']
+  FOREACH t IN ARRAY ARRAY['ops_2026.lavorazioni','ops_2026.pedane','ops_2026.scarti']
   LOOP
     EXECUTE format('CREATE POLICY "select" ON %s FOR SELECT TO authenticated USING (true)', t);
     EXECUTE format('CREATE POLICY "write"  ON %s FOR ALL    TO authenticated
@@ -719,17 +719,17 @@ CREATE POLICY "select" ON audit.log FOR SELECT TO authenticated USING (public.au
 > Senza questi grant, le query client possono fallire con `permission denied for schema ...` anche se le policy RLS sono corrette.
 ```sql
 GRANT USAGE ON SCHEMA registry TO authenticated;
-GRANT USAGE ON SCHEMA ops_2025 TO authenticated;
+GRANT USAGE ON SCHEMA ops_2026 TO authenticated;
 GRANT USAGE ON SCHEMA audit TO authenticated;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA registry TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ops_2025 TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ops_2026 TO authenticated;
 GRANT SELECT, INSERT ON TABLE audit.log TO authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA registry
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA ops_2025
+ALTER DEFAULT PRIVILEGES IN SCHEMA ops_2026
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA audit
@@ -738,7 +738,7 @@ GRANT SELECT, INSERT ON TABLES TO authenticated;
 
 Se il progetto esiste già e hai introdotto l'hard delete dopo la prima migrazione, riesegui i `GRANT ... DELETE` sopra per riallineare i permessi correnti.
 
-In Supabase: **Project Settings → API → Exposed schemas** deve includere almeno `registry`, `ops_2025` e `audit`.
+In Supabase: **Project Settings → API → Exposed schemas** deve includere almeno `registry`, `ops_2026` e `audit`.
 
 ---
 

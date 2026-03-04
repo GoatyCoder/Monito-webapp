@@ -12,7 +12,7 @@
 - [x] Aggiungere `@supabase/supabase-js` e `@supabase/ssr` in `package.json`
 - [x] Creare `src/lib/config/db.ts`:
 ```typescript
-  export const OPS_SCHEMA      = 'ops_2025' as const;
+  export const OPS_SCHEMA      = 'ops_2026' as const;
   export const REGISTRY_SCHEMA = 'registry' as const;
   export const AUDIT_SCHEMA    = 'audit' as const;
 ```
