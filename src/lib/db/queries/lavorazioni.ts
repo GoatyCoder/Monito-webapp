@@ -190,7 +190,7 @@ export async function fetchNewWorkOrderFormData(supabase: SupabaseClient): Promi
   const [lineeResult, sigleResult, prodottiResult, varietaResult, articoliResult, imballaggiResult, lavorazioniResult] =
     await Promise.all([
       supabase.schema(REGISTRY_SCHEMA).from('linee').select('*').eq('is_active', true).order('ordine', { ascending: true }),
-      supabase.schema(REGISTRY_SCHEMA).from('sigle_lotto').select('*').eq('is_active', true).order('codice', { ascending: true }),
+      supabase.schema(REGISTRY_SCHEMA).from('sigle_lotto').select('*').order('codice', { ascending: true }),
       supabase.schema(REGISTRY_SCHEMA).from('prodotti_grezzi').select('id,nome').eq('is_active', true),
       supabase.schema(REGISTRY_SCHEMA).from('varieta').select('id,nome').eq('is_active', true),
       supabase.schema(REGISTRY_SCHEMA).from('articoli').select('*').eq('is_active', true).order('nome', { ascending: true }),
