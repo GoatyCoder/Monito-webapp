@@ -1,8 +1,10 @@
 'use client';
 
+import { LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { AUTH_PATHS } from '@/lib/config/paths';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
 import { UserRole } from '@/types/domain';
@@ -28,38 +30,31 @@ export function UserMenu({ displayName, role }: UserMenuProps) {
     setError('');
     setIsSigningOut(true);
 
-    try {
-      const { error: signOutError } = await supabase.auth.signOut();
+    const { error: signOutError } = await supabase.auth.signOut();
 
-      if (signOutError) {
-        setError(signOutError.message);
-        return;
-      }
-
-      router.push(AUTH_PATHS.login);
-      router.refresh();
-    } catch {
-      setError('Errore imprevisto durante la disconnessione. Riprova.');
-    } finally {
+    if (signOutError) {
+      setError(signOutError.message);
       setIsSigningOut(false);
+      return;
     }
+
+    router.push(AUTH_PATHS.login);
+    router.refresh();
+    setIsSigningOut(false);
   };
 
   return (
     <div className="flex items-center gap-2">
+      {/* Profilo utente compatto con CTA disconnessione più evidente. */}
       <div className="text-right">
         <p className="text-xs font-medium text-slate-700">{displayName}</p>
         <p className="text-xs text-secondary">{ROLE_LABELS[role]}</p>
       </div>
 
-      <button
-        type="button"
-        onClick={handleSignOut}
-        disabled={isSigningOut}
-        className="rounded border border-secondary px-2 py-1 text-xs text-secondary transition hover:border-primary hover:text-primary disabled:opacity-50"
-      >
+      <Button type="button" variant="outline" size="sm" onClick={handleSignOut} disabled={isSigningOut}>
+        <LogOut className="h-3.5 w-3.5" />
         {isSigningOut ? 'Uscita...' : 'Disconnetti'}
-      </button>
+      </Button>
 
       {error && <p className="text-xs text-error">{error}</p>}
     </div>

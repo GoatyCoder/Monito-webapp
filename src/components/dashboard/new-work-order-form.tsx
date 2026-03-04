@@ -1,6 +1,9 @@
 'use client';
 
 import { ChangeEvent, useMemo, useState } from 'react';
+import { CheckCircle2 } from 'lucide-react';
+
+import { Input } from '@/components/ui/input';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -42,6 +45,7 @@ export function NewWorkOrderForm({ canEdit }: NewWorkOrderFormProps) {
   const [siglaLotto, setSiglaLotto] = useState('');
   const [dataIngresso, setDataIngresso] = useState('');
   const [lottoIngressoDoy, setLottoIngressoDoy] = useState('');
+  const [autoField, setAutoField] = useState<'date' | 'doy' | null>(null);
 
   const helperText = useMemo(() => {
     if (!dataIngresso && !lottoIngressoDoy) {
@@ -52,17 +56,21 @@ export function NewWorkOrderForm({ canEdit }: NewWorkOrderFormProps) {
     return `Anno di conversione: ${year}`;
   }, [dataIngresso, lottoIngressoDoy]);
 
+  const isSynced = Boolean(dataIngresso && lottoIngressoDoy && dayOfYearFromDate(dataIngresso) === Number(lottoIngressoDoy));
+
   const handleDataIngressoChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextDate = event.target.value;
     setDataIngresso(nextDate);
 
     if (!nextDate) {
       setLottoIngressoDoy('');
+      setAutoField(null);
       return;
     }
 
     const doy = dayOfYearFromDate(nextDate);
     setLottoIngressoDoy(doy ? String(doy).padStart(3, '0') : '');
+    setAutoField('doy');
   };
 
   const handleDoyChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -71,12 +79,14 @@ export function NewWorkOrderForm({ canEdit }: NewWorkOrderFormProps) {
 
     if (!rawValue) {
       setDataIngresso('');
+      setAutoField(null);
       return;
     }
 
     const year = new Date().getFullYear();
     const date = dateFromDayOfYear(Number(rawValue), year);
     setDataIngresso(date ?? '');
+    setAutoField('date');
   };
 
   return (
@@ -87,39 +97,39 @@ export function NewWorkOrderForm({ canEdit }: NewWorkOrderFormProps) {
       </header>
 
       {canEdit ? (
-      <div className="grid gap-4 md:grid-cols-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Sigla lotto</span>
-          <input
-            className="rounded border border-secondary bg-white px-3 py-2"
-            placeholder="Es. ALFA12"
-            value={siglaLotto}
-            onChange={(event) => setSiglaLotto(event.target.value.toUpperCase())}
-          />
-        </label>
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Input uniformati con shadcn/ui e check verde su compilazione automatica sincronizzata. */}
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Sigla lotto</span>
+            <Input
+              placeholder="Es. ALFA12"
+              value={siglaLotto}
+              onChange={(event) => setSiglaLotto(event.target.value.toUpperCase())}
+            />
+          </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Data ingresso</span>
-          <input
-            className="rounded border border-secondary bg-white px-3 py-2"
-            type="date"
-            value={dataIngresso}
-            onChange={handleDataIngressoChange}
-          />
-        </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Data ingresso</span>
+            <div className="flex items-center gap-2">
+              <Input type="date" value={dataIngresso} onChange={handleDataIngressoChange} />
+              {isSynced && autoField === 'date' ? <CheckCircle2 className="h-5 w-5 text-success" /> : null}
+            </div>
+          </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Lotto ingresso (DOY)</span>
-          <input
-            className="rounded border border-secondary bg-white px-3 py-2"
-            inputMode="numeric"
-            maxLength={3}
-            placeholder="001-366"
-            value={lottoIngressoDoy}
-            onChange={handleDoyChange}
-          />
-        </label>
-      </div>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Lotto ingresso (DOY)</span>
+            <div className="flex items-center gap-2">
+              <Input
+                inputMode="numeric"
+                maxLength={3}
+                placeholder="001-366"
+                value={lottoIngressoDoy}
+                onChange={handleDoyChange}
+              />
+              {isSynced && autoField === 'doy' ? <CheckCircle2 className="h-5 w-5 text-success" /> : null}
+            </div>
+          </label>
+        </div>
       ) : (
         <p className="text-sm text-secondary">Modalità sola lettura: apertura lavorazioni disponibile solo per Admin e Operatore.</p>
       )}
