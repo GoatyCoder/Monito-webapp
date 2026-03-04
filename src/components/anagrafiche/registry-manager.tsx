@@ -13,6 +13,7 @@ import {
   setRegistryRowActiveStatus,
   updateRegistryRow
 } from '@/lib/db/registry-queries';
+import { getUserDisplayName, getUserRoleFromMetadata } from '@/lib/auth/user';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
 import type { UserRole } from '@/types/domain';
 
@@ -574,12 +575,10 @@ export function RegistryManager() {
 
     const user = userResponse.data.user;
     if (user) {
-      const fullName = user.user_metadata?.full_name;
-      const metadataRole = user.app_metadata?.role;
-      const role: UserRole = metadataRole === 'admin' || metadataRole === 'operatore' || metadataRole === 'viewer' ? metadataRole : 'viewer';
+      const role = getUserRoleFromMetadata(user);
       setUserIdentity({
         userId: user.id,
-        actorName: typeof fullName === 'string' && fullName.trim() ? fullName : user.email ?? 'Utente',
+        actorName: getUserDisplayName(user),
         role
       });
     }
@@ -619,6 +618,11 @@ export function RegistryManager() {
       return false;
     }
 
+    if (userIdentity.role !== 'admin') {
+      setStatusMessage('Operazione non autorizzata: solo Admin può creare record anagrafica.');
+      return false;
+    }
+
     if (table === 'sigle_lotto') {
       const incompatibilityError = validateSiglaLottoPairing(payload);
       if (incompatibilityError) {
@@ -649,6 +653,11 @@ export function RegistryManager() {
   async function editRecord(table: RegistryTable, rowId: string, payload: Record<string, unknown>) {
     if (!userIdentity) {
       setStatusMessage('Utente non disponibile. Ricarica la pagina.');
+      return false;
+    }
+
+    if (userIdentity.role !== 'admin') {
+      setStatusMessage('Operazione non autorizzata: solo Admin può modificare record anagrafica.');
       return false;
     }
 
@@ -688,6 +697,11 @@ export function RegistryManager() {
   async function toggleRecordActive(table: RegistryTable, row: RegistryRecord) {
     if (!userIdentity) {
       setStatusMessage('Utente non disponibile. Ricarica la pagina.');
+      return;
+    }
+
+    if (userIdentity.role !== 'admin') {
+      setStatusMessage('Operazione non autorizzata: solo Admin può disattivare o ripristinare record anagrafica.');
       return;
     }
 
