@@ -114,6 +114,7 @@ export type AuditLog = {
     | 'update'
     | 'soft_delete'
     | 'restore'
+    | 'delete'
     | 'open'
     | 'close'
     | 'reopen';

@@ -75,6 +75,10 @@ export function setRegistryRowActiveStatus(
   return supabase.schema(REGISTRY_SCHEMA).from(table).update(payload).eq('id', rowId).select('*').single();
 }
 
+export function deleteRegistryRow(supabase: SupabaseClient, table: RegistryTable, rowId: string) {
+  return supabase.schema(REGISTRY_SCHEMA).from(table).delete().eq('id', rowId).select('*').single();
+}
+
 export function fetchCurrentUser(supabase: SupabaseClient) {
   return supabase.auth.getUser();
 }

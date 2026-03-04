@@ -5,6 +5,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 
 import { REGISTRY_SCHEMA } from '@/lib/config/db';
 import {
   createRegistryRow,
+  deleteRegistryRow,
   fetchCurrentUser,
   fetchRegistryRowById,
   fetchRegistryTable,
@@ -12,7 +13,9 @@ import {
   setRegistryRowActiveStatus,
   updateRegistryRow
 } from '@/lib/db/registry-queries';
+import { getUserDisplayName, getUserRoleFromMetadata } from '@/lib/auth/user';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
+import type { UserRole } from '@/types/domain';
 
 type RegistryBase = {
   id: string;
@@ -102,12 +105,30 @@ type ModalState =
     }
   | null;
 
+type ConfirmationState =
+  | {
+      kind: 'toggle-active';
+      table: RegistryTable;
+      row: RegistryRecord;
+    }
+  | {
+      kind: 'hard-delete';
+      table: RegistryTable;
+      row: RegistryRecord;
+    }
+  | null;
+
 type TableColumn = {
   key: string;
   label: string;
   className?: string;
   getValue: (row: RegistryRecord) => string | number | boolean | null;
   render: (row: RegistryRecord) => ReactNode;
+};
+
+type CascadeTarget = {
+  table: RegistryTable;
+  row: RegistryRecord;
 };
 
 const TAB_CONFIG: { key: RegistryTable; label: string; description: string }[] = [
@@ -149,6 +170,57 @@ function getRowsByTable(data: RegistryData, table: RegistryTable): RegistryRecor
     case 'sigle_lotto':
       return data.sigleLotto;
   }
+}
+
+function getSoftDeleteCascadeTargets(data: RegistryData, table: RegistryTable, row: RegistryRecord): CascadeTarget[] {
+  const targetsByKey = new Map<string, CascadeTarget>();
+
+  function addTarget(targetTable: RegistryTable, targetRow: RegistryRecord) {
+    if (!targetRow.is_active) {
+      return;
+    }
+
+    targetsByKey.set(`${targetTable}:${targetRow.id}`, { table: targetTable, row: targetRow });
+  }
+
+  function collectVarietaChildren(varietaId: string) {
+    data.sigleLotto
+      .filter((sigla) => sigla.varieta_id === varietaId)
+      .forEach((sigla) => addTarget('sigle_lotto', sigla));
+
+    data.articoli
+      .filter((articolo) => articolo.vincolo_varieta_id === varietaId)
+      .forEach((articolo) => addTarget('articoli', articolo));
+  }
+
+  switch (table) {
+    case 'prodotti_grezzi': {
+      data.varieta
+        .filter((varieta) => varieta.prodotto_grezzo_id === row.id)
+        .forEach((varieta) => {
+          addTarget('varieta', varieta);
+          collectVarietaChildren(varieta.id);
+        });
+
+      data.sigleLotto
+        .filter((sigla) => sigla.prodotto_grezzo_id === row.id)
+        .forEach((sigla) => addTarget('sigle_lotto', sigla));
+
+      data.articoli
+        .filter((articolo) => articolo.vincolo_prodotto_grezzo_id === row.id)
+        .forEach((articolo) => addTarget('articoli', articolo));
+
+      break;
+    }
+    case 'varieta': {
+      collectVarietaChildren(row.id);
+      break;
+    }
+    default:
+      break;
+  }
+
+  return [...targetsByKey.values()];
 }
 
 function getDefaultSortState(): Record<RegistryTable, SortConfig> {
@@ -393,9 +465,11 @@ export function RegistryManager() {
     linee: 1,
     sigle_lotto: 1
   });
-  const [userIdentity, setUserIdentity] = useState<{ userId: string; actorName: string } | null>(null);
+  const [userIdentity, setUserIdentity] = useState<{ userId: string; actorName: string; role: UserRole } | null>(null);
+  const [confirmationState, setConfirmationState] = useState<ConfirmationState>(null);
 
   const supabase = useMemo(() => createSupabaseClient(), []);
+  const isAdmin = userIdentity?.role === 'admin';
 
   const prodottoById = useMemo(
     () => new Map(data.prodottiGrezzi.map((prodotto) => [prodotto.id, prodotto.nome])),
@@ -501,10 +575,11 @@ export function RegistryManager() {
 
     const user = userResponse.data.user;
     if (user) {
-      const fullName = user.user_metadata?.full_name;
+      const role = getUserRoleFromMetadata(user);
       setUserIdentity({
         userId: user.id,
-        actorName: typeof fullName === 'string' && fullName.trim() ? fullName : user.email ?? 'Utente'
+        actorName: getUserDisplayName(user),
+        role
       });
     }
   }, [supabase]);
@@ -516,7 +591,7 @@ export function RegistryManager() {
   async function logAuditEvent(params: {
     tableName: RegistryTable;
     recordId: string;
-    action: 'insert' | 'update' | 'soft_delete' | 'restore';
+    action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'delete';
     oldValue: Record<string, unknown> | null;
     newValue: Record<string, unknown> | null;
   }) {
@@ -540,6 +615,11 @@ export function RegistryManager() {
   async function createRecord(table: RegistryTable, payload: Record<string, unknown>) {
     if (!userIdentity) {
       setStatusMessage('Utente non disponibile. Ricarica la pagina.');
+      return false;
+    }
+
+    if (userIdentity.role !== 'admin') {
+      setStatusMessage('Operazione non autorizzata: solo Admin può creare record anagrafica.');
       return false;
     }
 
@@ -573,6 +653,11 @@ export function RegistryManager() {
   async function editRecord(table: RegistryTable, rowId: string, payload: Record<string, unknown>) {
     if (!userIdentity) {
       setStatusMessage('Utente non disponibile. Ricarica la pagina.');
+      return false;
+    }
+
+    if (userIdentity.role !== 'admin') {
+      setStatusMessage('Operazione non autorizzata: solo Admin può modificare record anagrafica.');
       return false;
     }
 
@@ -615,6 +700,11 @@ export function RegistryManager() {
       return;
     }
 
+    if (userIdentity.role !== 'admin') {
+      setStatusMessage('Operazione non autorizzata: solo Admin può disattivare o ripristinare record anagrafica.');
+      return;
+    }
+
     const shouldRestore = row.is_active === false;
 
     const existing = await fetchRegistryRowById(supabase, table, row.id);
@@ -640,7 +730,86 @@ export function RegistryManager() {
     });
 
     upsertLocalRow(table, response.data as RegistryRecord);
-    setStatusMessage(shouldRestore ? 'Record ripristinato.' : 'Record disattivato.');
+
+    if (shouldRestore) {
+      setStatusMessage('Record ripristinato.');
+      return;
+    }
+
+    const cascadeTargets = getSoftDeleteCascadeTargets(data, table, row);
+    const cascadeErrors: string[] = [];
+    let cascadedCount = 0;
+
+    for (const target of cascadeTargets) {
+      const currentTarget = await fetchRegistryRowById(supabase, target.table, target.row.id);
+      if (currentTarget.error || !currentTarget.data || currentTarget.data.is_active === false) {
+        if (currentTarget.error) {
+          cascadeErrors.push(`lettura ${target.table} (${target.row.id}): ${currentTarget.error.message}`);
+        }
+        continue;
+      }
+
+      const deactivation = await setRegistryRowActiveStatus(supabase, target.table, target.row.id, false, userIdentity.userId);
+      if (deactivation.error || !deactivation.data) {
+        cascadeErrors.push(`disattivazione ${target.table} (${target.row.id}): ${deactivation.error?.message ?? 'sconosciuto'}`);
+        continue;
+      }
+
+      await logAuditEvent({
+        tableName: target.table,
+        recordId: target.row.id,
+        action: 'soft_delete',
+        oldValue: currentTarget.data,
+        newValue: deactivation.data
+      });
+
+      upsertLocalRow(target.table, deactivation.data as RegistryRecord);
+      cascadedCount += 1;
+    }
+
+    if (cascadeErrors.length > 0) {
+      setStatusMessage(`Record disattivato con ${cascadedCount} disattivazioni in cascata. Errori: ${cascadeErrors.join('; ')}`);
+      return;
+    }
+
+    setStatusMessage(`Record disattivato${cascadedCount > 0 ? ` con ${cascadedCount} disattivazioni in cascata` : ''}.`);
+  }
+
+  async function hardDeleteRecord(table: RegistryTable, row: RegistryRecord) {
+    if (!userIdentity) {
+      setStatusMessage('Utente non disponibile. Ricarica la pagina.');
+      return;
+    }
+
+    if (userIdentity.role !== 'admin') {
+      setStatusMessage('Operazione non autorizzata: solo Admin può eliminare definitivamente.');
+      return;
+    }
+
+    const response = await deleteRegistryRow(supabase, table, row.id);
+    if (response.error || !response.data) {
+      const message = response.error?.message ?? 'sconosciuto';
+      if (message.toLowerCase().includes('permission denied')) {
+        setStatusMessage(
+          `Errore eliminazione definitiva ${table}: permessi DELETE mancanti su schema registry. Aggiorna GRANT/RLS come da docs/Schema.md (Blocco 7).`
+        );
+        return;
+      }
+
+      setStatusMessage(`Errore eliminazione definitiva ${table}: ${response.error?.message ?? 'sconosciuto'}`);
+      return;
+    }
+
+    await logAuditEvent({
+      tableName: table,
+      recordId: row.id,
+      action: 'delete',
+      oldValue: response.data,
+      newValue: null
+    });
+
+    setStatusMessage('Record eliminato definitivamente.');
+    await loadRegistryData();
   }
 
   function extractPayload(table: RegistryTable, formData: FormData): Record<string, unknown> {
@@ -714,9 +883,15 @@ export function RegistryManager() {
     const selectedProductId =
       table === 'sigle_lotto' && row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : undefined;
 
+    const isCurrentSelection = (itemId: string, selectedId: string | undefined) => selectedId === itemId;
+
+    const selectedVarietaId = row && 'varieta_id' in row ? row.varieta_id : undefined;
+
     const filteredVarieta = selectedProductId
-      ? data.varieta.filter((item) => item.prodotto_grezzo_id === selectedProductId)
-      : data.varieta;
+      ? data.varieta.filter(
+          (item) => item.prodotto_grezzo_id === selectedProductId && (item.is_active || isCurrentSelection(item.id, selectedVarietaId))
+        )
+      : data.varieta.filter((item) => item.is_active || isCurrentSelection(item.id, selectedVarietaId));
 
     switch (table) {
       case 'prodotti_grezzi':
@@ -748,7 +923,9 @@ export function RegistryManager() {
                 className="rounded-md border border-slate-300 px-3 py-2"
               >
                 <option value="">Seleziona prodotto</option>
-                {data.prodottiGrezzi.map((item) => (
+                {data.prodottiGrezzi
+                  .filter((item) => item.is_active || isCurrentSelection(item.id, row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : undefined))
+                  .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}
                   </option>
@@ -788,7 +965,9 @@ export function RegistryManager() {
                 className="rounded-md border border-slate-300 px-3 py-2"
               >
                 <option value="">Nessun vincolo</option>
-                {data.prodottiGrezzi.map((item) => (
+                {data.prodottiGrezzi
+                  .filter((item) => item.is_active || isCurrentSelection(item.id, row && 'vincolo_prodotto_grezzo_id' in row ? (row.vincolo_prodotto_grezzo_id ?? undefined) : undefined))
+                  .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}
                   </option>
@@ -803,7 +982,9 @@ export function RegistryManager() {
                 className="rounded-md border border-slate-300 px-3 py-2"
               >
                 <option value="">Nessun vincolo</option>
-                {data.varieta.map((item) => (
+                {data.varieta
+                  .filter((item) => item.is_active || isCurrentSelection(item.id, row && 'vincolo_varieta_id' in row ? (row.vincolo_varieta_id ?? undefined) : undefined))
+                  .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}
                   </option>
@@ -890,7 +1071,9 @@ export function RegistryManager() {
                 className="rounded-md border border-slate-300 px-3 py-2"
               >
                 <option value="">Seleziona prodotto</option>
-                {data.prodottiGrezzi.map((item) => (
+                {data.prodottiGrezzi
+                  .filter((item) => item.is_active || isCurrentSelection(item.id, row && 'prodotto_grezzo_id' in row ? row.prodotto_grezzo_id : undefined))
+                  .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}
                   </option>
@@ -1020,13 +1203,20 @@ export function RegistryManager() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            void toggleRecordActive(activeTab, row);
-                          }}
+                          onClick={() => setConfirmationState({ kind: 'toggle-active', table: activeTab, row })}
                           className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium"
                         >
                           {row.is_active ? 'Disattiva' : 'Ripristina'}
                         </button>
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmationState({ kind: 'hard-delete', table: activeTab, row })}
+                            className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700"
+                          >
+                            Elimina definitiva
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -1077,6 +1267,53 @@ export function RegistryManager() {
               </button>
             </div>
           </form>
+        </ModalShell>
+      ) : null}
+
+      {confirmationState ? (
+        <ModalShell
+          title={confirmationState.kind === 'hard-delete' ? 'Conferma eliminazione definitiva' : 'Conferma operazione'}
+          onClose={() => setConfirmationState(null)}
+        >
+          <div className="space-y-4">
+            {confirmationState.kind === 'hard-delete' ? (
+              <p className="text-sm text-slate-700">
+                Stai per eliminare definitivamente questo record. L&apos;operazione è irreversibile e, se configurato nel database,
+                verrà applicata anche la cascata ON DELETE CASCADE ai dati collegati. Vuoi procedere?
+              </p>
+            ) : (
+              <p className="text-sm text-slate-700">
+                Confermi di voler {confirmationState.row.is_active ? 'disattivare' : 'ripristinare'} il record selezionato?
+              </p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmationState(null)}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const currentConfirmation = confirmationState;
+                  setConfirmationState(null);
+                  if (currentConfirmation.kind === 'hard-delete') {
+                    void hardDeleteRecord(currentConfirmation.table, currentConfirmation.row);
+                    return;
+                  }
+
+                  void toggleRecordActive(currentConfirmation.table, currentConfirmation.row);
+                }}
+                className={`rounded-md px-4 py-2 text-sm font-semibold text-white ${
+                  confirmationState.kind === 'hard-delete' ? 'bg-red-700' : 'bg-slate-900'
+                }`}
+              >
+                Conferma
+              </button>
+            </div>
+          </div>
         </ModalShell>
       ) : null}
     </section>
