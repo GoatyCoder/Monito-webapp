@@ -172,7 +172,7 @@
 - [ ] `SummaryBar` collegata ad aggregati realtime (lavorazioni aperte, pedane oggi, colli oggi, scarto oggi)
 - [ ] Card linea da dati reali (inactive / active / multi)
 - [ ] Subscriptions Supabase Realtime su lavorazioni e pedane
-- [ ] Modal apertura lavorazione
+- [x] Modale nuova lavorazione con azioni `Programma` / `Avvia ora` e validazioni inline
 - [ ] Dialog conferma multi-lavorazione
 - [ ] Modal chiusura lavorazione
 - [ ] Modal riapertura lavorazione (con motivo opzionale, audit log)
@@ -230,7 +230,9 @@
 
 ## Data & Compliance
 
-- [ ] Audit log su ogni operazione (INSERT, UPDATE, soft_delete, restore, delete, open, close, reopen)
+- [ ] Audit log su ogni operazione (INSERT, UPDATE, soft_delete, restore, delete, schedule, open, close, reopen)
+- [x] Migration refactor `lavorazioni`: FK `sigla_lotto_id`, `peso_per_collo`, `lotto_ingresso`, `note`, vincoli temporali
+- [x] Supporto lavorazioni programmate (`aperta_at` nullo + audit action `schedule`)
 - [ ] Validazione `peso_totale = 0` bloccata lato app
 - [ ] Validazione "almeno `colli` o `peso_kg`" su scarti
 - [ ] Verifica formato `codice_pedana` = `PYY-DOY-NNNN`

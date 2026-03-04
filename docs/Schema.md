@@ -152,20 +152,27 @@ I riferimenti a `registry.*` funzionano cross-schema — stesso database Supabas
 
 ### `ops_YYYY.lavorazioni`
 ```sql
-id                        uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at                timestamptz DEFAULT now()
-created_by                uuid NOT NULL REFERENCES auth.users(id)
-updated_at                timestamptz
-updated_by                uuid REFERENCES auth.users(id)
-linea_id                  uuid NOT NULL REFERENCES registry.linee(id) ON DELETE CASCADE
-sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice) ON DELETE CASCADE
-data_ingresso             date NOT NULL
-articolo_id               uuid NOT NULL REFERENCES registry.articoli(id) ON DELETE CASCADE
-imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id) ON DELETE CASCADE
-stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta'
-aperta_at                 timestamptz NOT NULL DEFAULT now()
-chiusa_at                 timestamptz
-aperta_da                 uuid NOT NULL REFERENCES auth.users(id)
+id                         uuid PRIMARY KEY DEFAULT gen_random_uuid()
+created_at                 timestamptz NOT NULL DEFAULT now()
+created_by                 uuid NOT NULL REFERENCES auth.users(id)
+updated_at                 timestamptz
+updated_by                 uuid REFERENCES auth.users(id)
+linea_id                   uuid NOT NULL REFERENCES registry.linee(id)
+sigla_lotto_id             uuid NOT NULL REFERENCES registry.sigle_lotto(id)
+data_ingresso              date NOT NULL
+lotto_ingresso             integer NOT NULL CHECK (lotto_ingresso BETWEEN 1 AND 366)
+articolo_id                uuid NOT NULL REFERENCES registry.articoli(id)
+imballaggio_secondario_id  uuid NOT NULL REFERENCES registry.imballaggi_secondari(id)
+peso_per_collo   numeric(8,3) NOT NULL CHECK (peso_per_collo > 0)
+note                       text
+aperta_at                  timestamptz
+chiusa_at                  timestamptz
+aperta_da                  uuid REFERENCES auth.users(id)
+
+CONSTRAINT lavorazioni_chiusa_requires_aperta
+  CHECK (chiusa_at IS NULL OR aperta_at IS NOT NULL),
+CONSTRAINT lavorazioni_chiusa_after_aperta
+  CHECK (chiusa_at IS NULL OR chiusa_at >= aperta_at)
 ```
 
 **Nota semantica:** `created_at/created_by` sono metadati tecnici. `aperta_at/aperta_da` sono il dominio operativo — mantenuti separati per tracciare correttamente le riaperture.
@@ -248,7 +255,7 @@ actor_name  text NOT NULL
 schema_name text NOT NULL
 table_name  text NOT NULL
 record_id   uuid NOT NULL
-action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','delete','open','close','reopen'))
+action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','delete','schedule','open','close','reopen'))
 field_name  text
 old_value   jsonb
 new_value   jsonb
@@ -354,15 +361,25 @@ export type SiglaLotto = EntityAuditFields & {
 export type Lavorazione = EntityAuditFields & {
   id: string;
   lineaId: string;
-  siglaLotto: string;
+  siglaLottoId: string;
   dataIngresso: string;
+  lottoIngresso: number;
   articoloId: string;
   imballaggioSecondarioId: string;
-  stato: 'aperta' | 'chiusa';
-  apertaAt: string;
+  pesoPerCollo: number;
+  note: string | null;
+  apertaAt: string | null;
   chiusaAt: string | null;
-  apertaDa: string;
+  apertaDa: string | null;
 };
+
+export type LavorazioneStato = 'programmata' | 'in_corso' | 'terminata';
+
+export function getLavorazioneStato(l: Lavorazione): LavorazioneStato {
+  if (!l.apertaAt) return 'programmata';
+  if (!l.chiusaAt) return 'in_corso';
+  return 'terminata';
+}
 
 export type Pedana = EntityAuditFields & {
   id: string;
@@ -391,7 +408,7 @@ export type AuditLog = {
   schemaName: string;
   tableName: string;
   recordId: string;
-  action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'delete' | 'open' | 'close' | 'reopen';
+  action: 'insert' | 'update' | 'soft_delete' | 'restore' | 'delete' | 'schedule' | 'open' | 'close' | 'reopen';
   fieldName: string | null;
   oldValue: unknown;
   newValue: unknown;
@@ -505,20 +522,26 @@ CREATE TABLE registry.sigle_lotto (
 CREATE SCHEMA ops_2025;
 
 CREATE TABLE ops_2025.lavorazioni (
-  id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at                timestamptz DEFAULT now(),
-  created_by                uuid NOT NULL REFERENCES auth.users(id),
-  updated_at                timestamptz,
-  updated_by                uuid REFERENCES auth.users(id),
-  linea_id                  uuid NOT NULL REFERENCES registry.linee(id) ON DELETE CASCADE,
-  sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice) ON DELETE CASCADE,
-  data_ingresso             date NOT NULL,
-  articolo_id               uuid NOT NULL REFERENCES registry.articoli(id) ON DELETE CASCADE,
-  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id) ON DELETE CASCADE,
-  stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta',
-  aperta_at                 timestamptz NOT NULL DEFAULT now(),
-  chiusa_at                 timestamptz,
-  aperta_da                 uuid NOT NULL REFERENCES auth.users(id)
+  id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at                 timestamptz DEFAULT now(),
+  created_by                 uuid NOT NULL REFERENCES auth.users(id),
+  updated_at                 timestamptz,
+  updated_by                 uuid REFERENCES auth.users(id),
+  linea_id                   uuid NOT NULL REFERENCES registry.linee(id) ON DELETE CASCADE,
+  sigla_lotto_id             uuid NOT NULL REFERENCES registry.sigle_lotto(id) ON DELETE CASCADE,
+  data_ingresso              date NOT NULL,
+  lotto_ingresso             integer NOT NULL CHECK (lotto_ingresso BETWEEN 1 AND 366),
+  articolo_id                uuid NOT NULL REFERENCES registry.articoli(id) ON DELETE CASCADE,
+  imballaggio_secondario_id  uuid NOT NULL REFERENCES registry.imballaggi_secondari(id) ON DELETE CASCADE,
+  peso_per_collo   numeric(8,3) NOT NULL CHECK (peso_per_collo > 0),
+  note                       text,
+  aperta_at                  timestamptz,
+  chiusa_at                  timestamptz,
+  aperta_da                  uuid REFERENCES auth.users(id),
+  CONSTRAINT lavorazioni_chiusa_requires_aperta
+    CHECK (chiusa_at IS NULL OR aperta_at IS NOT NULL),
+  CONSTRAINT lavorazioni_chiusa_after_aperta
+    CHECK (chiusa_at IS NULL OR chiusa_at >= aperta_at)
 );
 
 CREATE TABLE ops_2025.pedane (
@@ -553,6 +576,38 @@ CREATE TABLE ops_2025.scarti (
   registrato_at timestamptz NOT NULL DEFAULT now(),
   registrato_da uuid NOT NULL REFERENCES auth.users(id)
 );
+```
+
+### Blocco 2.1 — Refactor lavorazioni
+```sql
+-- Refactor lavorazioni: rimozione stato, aggiunta sigla_lotto_id FK,
+-- peso_per_collo, note, constraints temporali
+ALTER TABLE ops_2025.lavorazioni
+  DROP COLUMN IF EXISTS stato,
+  DROP COLUMN IF EXISTS sigla_lotto,
+  ADD COLUMN sigla_lotto_id uuid NOT NULL REFERENCES registry.sigle_lotto(id),
+  ADD COLUMN lotto_ingresso integer NOT NULL DEFAULT 1 CHECK (lotto_ingresso BETWEEN 1 AND 366),
+  ADD COLUMN peso_per_collo numeric(8,3),
+  ADD CONSTRAINT lavorazioni_peso_per_collo_positive
+    CHECK (peso_per_collo IS NULL OR peso_per_collo > 0),
+  ADD COLUMN note text,
+  ALTER COLUMN aperta_at DROP NOT NULL,
+  ALTER COLUMN chiusa_at DROP NOT NULL,
+  ALTER COLUMN aperta_da DROP NOT NULL,
+  ADD CONSTRAINT lavorazioni_chiusa_requires_aperta
+    CHECK (chiusa_at IS NULL OR aperta_at IS NOT NULL),
+  ADD CONSTRAINT lavorazioni_chiusa_after_aperta
+    CHECK (chiusa_at IS NULL OR chiusa_at >= aperta_at);
+
+-- Backfill obbligatorio prima del NOT NULL (esempio):
+-- UPDATE ops_2025.lavorazioni l
+-- SET peso_per_collo = a.peso_per_collo
+-- FROM registry.articoli a
+-- WHERE a.id = l.articolo_id AND l.peso_per_collo IS NULL;
+
+-- Rendere il campo obbligatorio solo dopo il backfill:
+-- ALTER TABLE ops_2025.lavorazioni
+--   ALTER COLUMN peso_per_collo SET NOT NULL;
 ```
 
 ### Blocco 3 — Trigger codice_pedana
@@ -600,7 +655,7 @@ CREATE TABLE audit.log (
   schema_name text NOT NULL,
   table_name  text NOT NULL,
   record_id   uuid NOT NULL,
-  action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','delete','open','close','reopen')),
+  action      text NOT NULL CHECK (action IN ('insert','update','soft_delete','restore','delete','schedule','open','close','reopen')),
   field_name  text,
   old_value   jsonb,
   new_value   jsonb,
@@ -611,9 +666,8 @@ CREATE TABLE audit.log (
 ### Blocco 5 — Indici
 ```sql
 CREATE INDEX idx_lav_linea    ON ops_2025.lavorazioni(linea_id);
-CREATE INDEX idx_lav_stato    ON ops_2025.lavorazioni(stato);
 CREATE INDEX idx_lav_at       ON ops_2025.lavorazioni(aperta_at);
-CREATE INDEX idx_lav_lotto    ON ops_2025.lavorazioni(sigla_lotto, data_ingresso);
+CREATE INDEX idx_lav_lotto    ON ops_2025.lavorazioni(sigla_lotto_id, data_ingresso);
 CREATE INDEX idx_ped_lav      ON ops_2025.pedane(lavorazione_id);
 CREATE INDEX idx_ped_reg_at   ON ops_2025.pedane(registrata_at);
 CREATE INDEX idx_sca_lotto    ON ops_2025.scarti(sigla_lotto, data_ingresso);
