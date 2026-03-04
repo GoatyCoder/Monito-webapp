@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { RotateCcw, Save, Trash2 } from 'lucide-react';
+import { Pencil, RotateCcw, Trash2 } from 'lucide-react';
 
 import { RegistryFilters, type RegistryFilterField } from '@/components/anagrafiche/registry-filters';
 import { Badge } from '@/components/ui/badge';
@@ -111,12 +111,7 @@ type ModalState =
 
 type ConfirmationState =
   | {
-      kind: 'toggle-active';
-      table: RegistryTable;
-      row: RegistryRecord;
-    }
-  | {
-      kind: 'hard-delete';
+      kind: 'delete';
       table: RegistryTable;
       row: RegistryRecord;
     }
@@ -487,7 +482,6 @@ export function RegistryManager() {
   const [confirmationState, setConfirmationState] = useState<ConfirmationState>(null);
 
   const supabase = useMemo(() => createSupabaseClient(), []);
-  const isAdmin = userIdentity?.role === 'admin';
 
   const prodottoById = useMemo(
     () => new Map(data.prodottiGrezzi.map((prodotto) => [prodotto.id, prodotto.nome])),
@@ -602,6 +596,12 @@ export function RegistryManager() {
 
   const setPage = (table: RegistryTable, nextPage: number) => {
     setPageState((current) => ({ ...current, [table]: Math.max(1, nextPage) }));
+  };
+
+  const resetFilters = (table: RegistryTable) => {
+    const defaultFilters = getDefaultFilterState();
+    setFilterState((current) => ({ ...current, [table]: defaultFilters[table] }));
+    setPage(table, 1);
   };
 
   function upsertLocalRow(table: RegistryTable, row: RegistryRecord) {
@@ -1260,6 +1260,7 @@ export function RegistryManager() {
           <RegistryFilters
             fields={filterFields}
             values={filterState[activeTab]}
+            onReset={() => resetFilters(activeTab)}
             onChange={(key, value) => {
               setFilterState((current) => {
                 const nextFilters = { ...current[activeTab], [key]: value };
@@ -1326,28 +1327,34 @@ export function RegistryManager() {
                           variant="outline"
                           size="sm"
                           onClick={() => setModalState({ mode: 'edit', table: activeTab, row })}
+                          aria-label="Modifica record"
+                          title="Modifica"
                         >
-                          <Save className="h-3.5 w-3.5" />
-                          Salva
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setConfirmationState({ kind: 'toggle-active', table: activeTab, row })}
-                        >
-                          {row.is_active ? <Trash2 className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                          {row.is_active ? 'Disattiva' : 'Ripristina'}
-                        </Button>
-                        {isAdmin ? (
-                          <button
+                        {row.is_active ? (
+                          <Button
                             type="button"
-                            onClick={() => setConfirmationState({ kind: 'hard-delete', table: activeTab, row })}
-                            className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setConfirmationState({ kind: 'delete', table: activeTab, row })}
+                            aria-label="Elimina record"
+                            title="Elimina"
                           >
-                            Elimina definitiva
-                          </button>
-                        ) : null}
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void toggleRecordActive(activeTab, row)}
+                            aria-label="Ripristina record"
+                            title="Ripristina"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1403,21 +1410,14 @@ export function RegistryManager() {
 
       {confirmationState ? (
         <ModalShell
-          title={confirmationState.kind === 'hard-delete' ? 'Conferma eliminazione definitiva' : 'Conferma operazione'}
+          title="Elimina record"
           onClose={() => setConfirmationState(null)}
         >
           <div className="space-y-4">
-            {confirmationState.kind === 'hard-delete' ? (
-              <p className="text-sm text-slate-700">
-                Stai per eliminare definitivamente questo record. L&apos;operazione è irreversibile e, se configurato nel database,
-                verrà applicata anche la cascata ON DELETE CASCADE ai dati collegati. Vuoi procedere?
-              </p>
-            ) : (
-              <p className="text-sm text-slate-700">
-                Confermi di voler {confirmationState.row.is_active ? 'disattivare' : 'ripristinare'} il record selezionato?
-              </p>
-            )}
-            <div className="flex justify-end gap-2 pt-2">
+            <p className="text-sm text-slate-700">
+              Scegli se disattivare il record (soft delete) oppure eliminarlo definitivamente.
+            </p>
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setConfirmationState(null)}
@@ -1430,18 +1430,22 @@ export function RegistryManager() {
                 onClick={() => {
                   const currentConfirmation = confirmationState;
                   setConfirmationState(null);
-                  if (currentConfirmation.kind === 'hard-delete') {
-                    void hardDeleteRecord(currentConfirmation.table, currentConfirmation.row);
-                    return;
-                  }
-
                   void toggleRecordActive(currentConfirmation.table, currentConfirmation.row);
                 }}
-                className={`rounded-md px-4 py-2 text-sm font-semibold text-white ${
-                  confirmationState.kind === 'hard-delete' ? 'bg-red-700' : 'bg-slate-900'
-                }`}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
               >
-                Conferma
+                Disattiva
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const currentConfirmation = confirmationState;
+                  setConfirmationState(null);
+                  void hardDeleteRecord(currentConfirmation.table, currentConfirmation.row);
+                }}
+                className="rounded-md bg-red-700 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Elimina definitiva
               </button>
             </div>
           </div>
