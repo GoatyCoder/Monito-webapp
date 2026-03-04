@@ -157,6 +157,17 @@
 
 ---
 
+
+## DB / Migration
+
+- [ ] Eseguire migration `lavorazioni` su Supabase:
+      rimozione stato/sigla_lotto, aggiunta sigla_lotto_id FK,
+      peso_per_collo_effettivo, note, constraints temporali.
+      ATTENZIONE: verificare assenza righe con chiusa_at valorizzato
+      e aperta_at NULL prima di applicare il constraint.
+
+---
+
 ## Auth & Ruoli
 
 - [x] Login funzionante con Supabase Auth

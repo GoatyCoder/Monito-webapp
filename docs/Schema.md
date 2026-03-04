@@ -152,23 +152,34 @@ I riferimenti a `registry.*` funzionano cross-schema — stesso database Supabas
 
 ### `ops_YYYY.lavorazioni`
 ```sql
-id                        uuid PRIMARY KEY DEFAULT gen_random_uuid()
-created_at                timestamptz DEFAULT now()
-created_by                uuid NOT NULL REFERENCES auth.users(id)
-updated_at                timestamptz
-updated_by                uuid REFERENCES auth.users(id)
-linea_id                  uuid NOT NULL REFERENCES registry.linee(id) ON DELETE CASCADE
-sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice) ON DELETE CASCADE
-data_ingresso             date NOT NULL
-articolo_id               uuid NOT NULL REFERENCES registry.articoli(id) ON DELETE CASCADE
-imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id) ON DELETE CASCADE
-stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta'
-aperta_at                 timestamptz NOT NULL DEFAULT now()
-chiusa_at                 timestamptz
-aperta_da                 uuid NOT NULL REFERENCES auth.users(id)
+CREATE TABLE ops_YYYY.lavorazioni (
+  id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  linea_id                  uuid NOT NULL REFERENCES registry.linee(id),
+  sigla_lotto_id            uuid NOT NULL REFERENCES registry.sigle_lotto(id),
+  data_ingresso             date NOT NULL,
+  lotto_ingresso            integer NOT NULL
+                              CHECK (lotto_ingresso BETWEEN 1 AND 366),
+  articolo_id               uuid NOT NULL REFERENCES registry.articoli(id),
+  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi(id),
+  peso_per_collo_effettivo  numeric(8,3) NOT NULL
+                              CHECK (peso_per_collo_effettivo > 0),
+  note                      text,
+  aperta_at                 timestamptz,
+  chiusa_at                 timestamptz,
+  aperta_da                 uuid REFERENCES auth.users(id),
+  created_at                timestamptz NOT NULL DEFAULT now(),
+
+  -- chiusa_at non può esistere se aperta_at è null
+  CONSTRAINT lavorazioni_chiusa_requires_aperta
+    CHECK (chiusa_at IS NULL OR aperta_at IS NOT NULL),
+
+  -- chiusa_at deve essere >= aperta_at
+  CONSTRAINT lavorazioni_chiusa_after_aperta
+    CHECK (chiusa_at IS NULL OR chiusa_at >= aperta_at)
+);
 ```
 
-**Nota semantica:** `created_at/created_by` sono metadati tecnici. `aperta_at/aperta_da` sono il dominio operativo — mantenuti separati per tracciare correttamente le riaperture.
+**Nota semantica:** `created_at` è metadata tecnico. `aperta_at/aperta_da` sono il dominio operativo — mantenuti separati per tracciare correttamente le riaperture.
 
 Su una stessa linea possono coesistere più lavorazioni aperte (caso eccezionale, richiede conferma esplicita). Vedi `PRD.md §Comportamenti di Sistema`.
 
@@ -405,6 +416,32 @@ export type AuditLog = {
 
 Eseguire su **Supabase → SQL Editor** nell'ordine indicato.
 
+### Patch — Refactor lavorazioni
+```sql
+-- Refactor lavorazioni: rimozione campo stato e sigla_lotto (snapshot),
+-- aggiunta sigla_lotto_id (FK), peso_per_collo_effettivo, note,
+-- aperta_at/chiusa_at diventano nullable, aggiunta constraints temporali.
+--
+-- ATTENZIONE: eseguire solo su DB con tabella vuota o dopo aver
+-- verificato che non esistano righe con chiusa_at valorizzato e aperta_at NULL.
+
+ALTER TABLE ops_2025.lavorazioni
+  DROP COLUMN IF EXISTS stato,
+  DROP COLUMN IF EXISTS sigla_lotto,
+  ADD COLUMN  sigla_lotto_id            uuid
+                NOT NULL REFERENCES registry.sigle_lotto(id),
+  ADD COLUMN  peso_per_collo_effettivo  numeric(8,3)
+                NOT NULL DEFAULT 0 CHECK (peso_per_collo_effettivo > 0),
+  ADD COLUMN  note                      text,
+  ALTER COLUMN aperta_at  DROP NOT NULL,
+  ALTER COLUMN chiusa_at  DROP NOT NULL,
+  ADD CONSTRAINT lavorazioni_chiusa_requires_aperta
+    CHECK (chiusa_at IS NULL OR aperta_at IS NOT NULL),
+  ADD CONSTRAINT lavorazioni_chiusa_after_aperta
+    CHECK (chiusa_at IS NULL OR chiusa_at >= aperta_at);
+```
+
+
 ### Blocco 1 — Schema registry
 ```sql
 CREATE SCHEMA registry;
@@ -506,19 +543,24 @@ CREATE SCHEMA ops_2025;
 
 CREATE TABLE ops_2025.lavorazioni (
   id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at                timestamptz DEFAULT now(),
-  created_by                uuid NOT NULL REFERENCES auth.users(id),
-  updated_at                timestamptz,
-  updated_by                uuid REFERENCES auth.users(id),
-  linea_id                  uuid NOT NULL REFERENCES registry.linee(id) ON DELETE CASCADE,
-  sigla_lotto               text NOT NULL REFERENCES registry.sigle_lotto(codice) ON DELETE CASCADE,
+  linea_id                  uuid NOT NULL REFERENCES registry.linee(id),
+  sigla_lotto_id            uuid NOT NULL REFERENCES registry.sigle_lotto(id),
   data_ingresso             date NOT NULL,
-  articolo_id               uuid NOT NULL REFERENCES registry.articoli(id) ON DELETE CASCADE,
-  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id) ON DELETE CASCADE,
-  stato                     text NOT NULL CHECK (stato IN ('aperta','chiusa')) DEFAULT 'aperta',
-  aperta_at                 timestamptz NOT NULL DEFAULT now(),
+  lotto_ingresso            integer NOT NULL
+                              CHECK (lotto_ingresso BETWEEN 1 AND 366),
+  articolo_id               uuid NOT NULL REFERENCES registry.articoli(id),
+  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi(id),
+  peso_per_collo_effettivo  numeric(8,3) NOT NULL
+                              CHECK (peso_per_collo_effettivo > 0),
+  note                      text,
+  aperta_at                 timestamptz,
   chiusa_at                 timestamptz,
-  aperta_da                 uuid NOT NULL REFERENCES auth.users(id)
+  aperta_da                 uuid REFERENCES auth.users(id),
+  created_at                timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT lavorazioni_chiusa_requires_aperta
+    CHECK (chiusa_at IS NULL OR aperta_at IS NOT NULL),
+  CONSTRAINT lavorazioni_chiusa_after_aperta
+    CHECK (chiusa_at IS NULL OR chiusa_at >= aperta_at)
 );
 
 CREATE TABLE ops_2025.pedane (
@@ -611,9 +653,8 @@ CREATE TABLE audit.log (
 ### Blocco 5 — Indici
 ```sql
 CREATE INDEX idx_lav_linea    ON ops_2025.lavorazioni(linea_id);
-CREATE INDEX idx_lav_stato    ON ops_2025.lavorazioni(stato);
 CREATE INDEX idx_lav_at       ON ops_2025.lavorazioni(aperta_at);
-CREATE INDEX idx_lav_lotto    ON ops_2025.lavorazioni(sigla_lotto, data_ingresso);
+CREATE INDEX idx_lav_lotto    ON ops_2025.lavorazioni(sigla_lotto_id, data_ingresso);
 CREATE INDEX idx_ped_lav      ON ops_2025.pedane(lavorazione_id);
 CREATE INDEX idx_ped_reg_at   ON ops_2025.pedane(registrata_at);
 CREATE INDEX idx_sca_lotto    ON ops_2025.scarti(sigla_lotto, data_ingresso);

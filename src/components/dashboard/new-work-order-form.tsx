@@ -1,41 +1,13 @@
 'use client';
 
+// TODO: componente sostituito da new-work-order-modal — rimuovere dopo validazione
+
 import { ChangeEvent, useMemo, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 
-const DAY_MS = 1000 * 60 * 60 * 24;
-
-function dayOfYearFromDate(dateString: string) {
-  const [year, month, day] = dateString.split('-').map(Number);
-  if (!year || !month || !day) {
-    return null;
-  }
-
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  const yearStart = new Date(Date.UTC(year, 0, 1));
-  const diff = date.getTime() - yearStart.getTime();
-
-  return Math.floor(diff / DAY_MS) + 1;
-}
-
-function dateFromDayOfYear(dayOfYear: number, year: number) {
-  if (!Number.isInteger(dayOfYear) || dayOfYear < 1 || dayOfYear > 366) {
-    return null;
-  }
-
-  const date = new Date(Date.UTC(year, 0, dayOfYear));
-  if (date.getUTCFullYear() !== year) {
-    return null;
-  }
-
-  return date.toISOString().slice(0, 10);
-}
+import { dateFromDayOfYear, dayOfYearFromDate } from '@/lib/utils/date';
 
 type NewWorkOrderFormProps = {
   canEdit: boolean;
