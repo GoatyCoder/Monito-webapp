@@ -447,4 +447,4 @@ dove prevista nello schema database. Vuoi procedere?"
 - New work order form: campi uniformati con `Input` e check verde `CheckCircle2` quando Data e DOY sono sincronizzati.
 - FAB scarto: CTA aggiornata con `Button` UI e icona `Trash2`.
 - Anagrafiche: introdotto pannello filtri per sezione (sempre visibile), counter `Badge` per record attivi/totali e azioni inline con icone (`Save`, `Trash2`, `RotateCcw`).
-- Refinement anagrafiche: azioni riga convertite a icone-only (`Modifica`, `Elimina`, `Ripristina`), pannello filtri con icona funnel + reset e dialog unico "Elimina" con scelta `Disattiva` o `Elimina definitiva`.
+- Refinement anagrafiche: azioni riga convertite a icone-only (`Modifica`, `Elimina`, `Ripristina`), pannello filtri collassabile tramite icona funnel (apri/chiudi) con reset e dialog unico "Elimina" con scelta `Disattiva` o `Elimina definitiva`.
