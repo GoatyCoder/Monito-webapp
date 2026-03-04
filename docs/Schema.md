@@ -610,6 +610,45 @@ ALTER TABLE ops_2025.lavorazioni
 --   ALTER COLUMN peso_per_collo SET NOT NULL;
 ```
 
+### Blocco 2.2 — Delta SQL per progetti **già esistenti**
+
+Se il progetto non è nuovo e applichi solo il refactor, esegui anche questi step dopo il Blocco 2.1.
+
+```sql
+-- 1) Backfill peso_per_collo dalle anagrafiche articolo
+UPDATE ops_2025.lavorazioni l
+SET peso_per_collo = a.peso_per_collo
+FROM registry.articoli a
+WHERE a.id = l.articolo_id
+  AND l.peso_per_collo IS NULL;
+
+-- 2) Rendi obbligatorio peso_per_collo dopo il backfill
+ALTER TABLE ops_2025.lavorazioni
+  ALTER COLUMN peso_per_collo SET NOT NULL;
+```
+
+```sql
+-- 3) Allinea audit action includendo 'schedule' su DB esistenti
+ALTER TABLE audit.log
+  DROP CONSTRAINT IF EXISTS log_action_check;
+
+ALTER TABLE audit.log
+  ADD CONSTRAINT log_action_check
+  CHECK (action IN ('insert','update','soft_delete','restore','delete','schedule','open','close','reopen'));
+```
+
+```sql
+-- 4) Verifica/crea indice usato dal nuovo modello lavorazioni
+CREATE INDEX IF NOT EXISTS idx_lav_lotto
+  ON ops_2025.lavorazioni(sigla_lotto_id, data_ingresso);
+```
+
+```sql
+-- 5) (Fuori SQL Editor) verifica in Supabase API
+-- Project Settings → API → Exposed schemas
+-- Deve includere: registry, ops_2025, audit
+```
+
 ### Blocco 3 — Trigger codice_pedana
 
 > Ripetere ogni anno aggiornando lo schema.
