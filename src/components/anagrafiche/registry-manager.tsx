@@ -14,6 +14,7 @@ import {
   updateRegistryRow
 } from '@/lib/db/registry-queries';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
+import type { UserRole } from '@/types/domain';
 
 type RegistryBase = {
   id: string;
@@ -463,10 +464,11 @@ export function RegistryManager() {
     linee: 1,
     sigle_lotto: 1
   });
-  const [userIdentity, setUserIdentity] = useState<{ userId: string; actorName: string } | null>(null);
+  const [userIdentity, setUserIdentity] = useState<{ userId: string; actorName: string; role: UserRole } | null>(null);
   const [confirmationState, setConfirmationState] = useState<ConfirmationState>(null);
 
   const supabase = useMemo(() => createSupabaseClient(), []);
+  const isAdmin = userIdentity?.role === 'admin';
 
   const prodottoById = useMemo(
     () => new Map(data.prodottiGrezzi.map((prodotto) => [prodotto.id, prodotto.nome])),
@@ -573,9 +575,12 @@ export function RegistryManager() {
     const user = userResponse.data.user;
     if (user) {
       const fullName = user.user_metadata?.full_name;
+      const metadataRole = user.app_metadata?.role;
+      const role: UserRole = metadataRole === 'admin' || metadataRole === 'operatore' || metadataRole === 'viewer' ? metadataRole : 'viewer';
       setUserIdentity({
         userId: user.id,
-        actorName: typeof fullName === 'string' && fullName.trim() ? fullName : user.email ?? 'Utente'
+        actorName: typeof fullName === 'string' && fullName.trim() ? fullName : user.email ?? 'Utente',
+        role
       });
     }
   }, [supabase]);
@@ -762,9 +767,8 @@ export function RegistryManager() {
       return;
     }
 
-    const existing = await fetchRegistryRowById(supabase, table, row.id);
-    if (existing.error || !existing.data) {
-      setStatusMessage(`Errore lettura record ${table}: ${existing.error?.message ?? 'sconosciuto'}`);
+    if (userIdentity.role !== 'admin') {
+      setStatusMessage('Operazione non autorizzata: solo Admin può eliminare definitivamente.');
       return;
     }
 
@@ -786,26 +790,8 @@ export function RegistryManager() {
       tableName: table,
       recordId: row.id,
       action: 'delete',
-      oldValue: existing.data,
+      oldValue: response.data,
       newValue: null
-    });
-
-    setData((currentData) => {
-      const removeById = <T extends RegistryRecord>(rows: T[]) => rows.filter((item) => item.id !== row.id);
-      switch (table) {
-        case 'prodotti_grezzi':
-          return { ...currentData, prodottiGrezzi: removeById(currentData.prodottiGrezzi) };
-        case 'varieta':
-          return { ...currentData, varieta: removeById(currentData.varieta) };
-        case 'articoli':
-          return { ...currentData, articoli: removeById(currentData.articoli) };
-        case 'imballaggi_secondari':
-          return { ...currentData, imballaggi: removeById(currentData.imballaggi) };
-        case 'linee':
-          return { ...currentData, linee: removeById(currentData.linee) };
-        case 'sigle_lotto':
-          return { ...currentData, sigleLotto: removeById(currentData.sigleLotto) };
-      }
     });
 
     setStatusMessage('Record eliminato definitivamente.');
@@ -1208,13 +1194,15 @@ export function RegistryManager() {
                         >
                           {row.is_active ? 'Disattiva' : 'Ripristina'}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmationState({ kind: 'hard-delete', table: activeTab, row })}
-                          className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700"
-                        >
-                          Elimina definitiva
-                        </button>
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmationState({ kind: 'hard-delete', table: activeTab, row })}
+                            className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700"
+                          >
+                            Elimina definitiva
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
