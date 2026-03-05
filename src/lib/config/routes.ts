@@ -2,7 +2,8 @@ import { UserRole } from '@/types/domain';
 
 const BASE_ROUTES = [
   { label: 'Cruscotto', href: '/dashboard' },
-  { label: 'Report', href: '/report' }
+  { label: 'Report', href: '/report' },
+  { label: 'Impostazioni', href: '/settings' }
 ] as const;
 
 const ADMIN_ROUTES = [{ label: 'Anagrafiche', href: '/anagrafiche' }] as const;

@@ -48,6 +48,8 @@ export function getUserRoleFromMetadata(user: User | null): UserRole {
     return 'viewer';
   }
 
+  // Compatibilità: il progetto oggi mantiene il ruolo in user_metadata (vedi Schema.md / auth_role()).
+  // Priorità ad app_metadata e fallback a user_metadata finché non viene completata la migrazione dei claim.
   const roleCandidates = [
     user.app_metadata?.role,
     user.app_metadata?.roles,

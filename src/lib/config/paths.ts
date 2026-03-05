@@ -4,5 +4,6 @@ export const AUTH_PATHS = {
 
 export const APP_PATHS = {
   dashboard: '/dashboard',
-  anagrafiche: '/anagrafiche'
+  anagrafiche: '/anagrafiche',
+  settings: '/settings'
 } as const;
