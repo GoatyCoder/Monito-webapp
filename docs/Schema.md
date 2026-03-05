@@ -154,6 +154,7 @@ I riferimenti a `registry.*` funzionano cross-schema — stesso database Supabas
 ```sql
 CREATE TABLE ops_YYYY.lavorazioni (
   id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_by                uuid NOT NULL REFERENCES auth.users(id),
   linea_id                  uuid NOT NULL REFERENCES registry.linee(id),
   sigla_lotto_id            uuid NOT NULL REFERENCES registry.sigle_lotto(id),
   data_ingresso             date NOT NULL,
@@ -179,7 +180,7 @@ CREATE TABLE ops_YYYY.lavorazioni (
 );
 ```
 
-**Nota semantica:** `created_at` è metadata tecnico. `aperta_at/aperta_da` sono il dominio operativo — mantenuti separati per tracciare correttamente le riaperture.
+**Nota semantica:** `created_at/created_by` sono metadata tecnici. `aperta_at/aperta_da` sono il dominio operativo — mantenuti separati per tracciare correttamente le riaperture.
 
 Su una stessa linea possono coesistere più lavorazioni aperte (caso eccezionale, richiede conferma esplicita). Vedi `PRD.md §Comportamenti di Sistema`.
 
@@ -543,6 +544,7 @@ CREATE SCHEMA ops_2026;
 
 CREATE TABLE ops_2026.lavorazioni (
   id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_by                uuid NOT NULL REFERENCES auth.users(id),
   linea_id                  uuid NOT NULL REFERENCES registry.linee(id),
   sigla_lotto_id            uuid NOT NULL REFERENCES registry.sigle_lotto(id),
   data_ingresso             date NOT NULL,
