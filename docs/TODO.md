@@ -180,8 +180,8 @@
 
 ## Cruscotto
 
-- [ ] `SummaryBar` collegata ad aggregati realtime (lavorazioni aperte, pedane oggi, colli oggi, scarto oggi)
-- [ ] Card linea da dati reali (inactive / active / multi)
+- [x] `SummaryBar` collegata ad aggregati runtime da DB (lavorazioni aperte, pedane oggi, colli oggi, scarto oggi)
+- [x] Card linea da dati reali (inactive / active / multi)
 - [ ] Subscriptions Supabase Realtime su lavorazioni e pedane
 - [ ] Modal apertura lavorazione
 - [ ] Dialog conferma multi-lavorazione
