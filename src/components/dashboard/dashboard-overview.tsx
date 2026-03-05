@@ -30,7 +30,6 @@ export function DashboardOverview({ canEdit, dashboardData }: DashboardOverviewP
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [reasonModal, setReasonModal] = useState<{ lavorazione: DashboardLavorazioneItem; mode: ActionMode } | null>(null);
-  const [reason, setReason] = useState('');
   const [editTarget, setEditTarget] = useState<DashboardLavorazioneItem | null>(null);
 
   useEffect(() => {
@@ -89,19 +88,18 @@ export function DashboardOverview({ canEdit, dashboardData }: DashboardOverviewP
       if (reasonModal.mode === 'close') {
         await closeLavorazione(
           supabase,
-          { lavorazioneId: reasonModal.lavorazione.id, reason: reason.trim() || null },
+          { lavorazioneId: reasonModal.lavorazione.id },
           await withUser()
         );
       } else {
         await reopenLavorazione(
           supabase,
-          { lavorazioneId: reasonModal.lavorazione.id, reason: reason.trim() || null },
+          { lavorazioneId: reasonModal.lavorazione.id },
           await withUser()
         );
       }
 
       setReasonModal(null);
-      setReason('');
       router.refresh();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Errore durante l\'operazione richiesta.');
@@ -196,23 +194,13 @@ export function DashboardOverview({ canEdit, dashboardData }: DashboardOverviewP
             <p className="mt-1 text-sm text-slate-600">
               {reasonModal.lavorazione.lineaNome} · {reasonModal.lavorazione.lottoLabel} · {reasonModal.lavorazione.articoloNome}
             </p>
-            <label className="mt-4 block text-sm font-medium text-slate-700">
-              Motivo (opzionale)
-              <textarea
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                maxLength={300}
-                className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary"
-              />
-            </label>
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 variant="outline"
                 type="button"
                 onClick={() => {
                   setReasonModal(null);
-                  setReason('');
-                }}
+                            }}
               >
                 Annulla
               </Button>

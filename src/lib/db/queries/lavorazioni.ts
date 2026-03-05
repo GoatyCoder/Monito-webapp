@@ -84,7 +84,6 @@ export type UpdateLavorazionePayload = {
   imballaggioSecondarioId: string;
   pesoPerCollo: number;
   note: string | null;
-  reason?: string | null;
 };
 
 export class LavorazioniQueryError extends Error {
@@ -422,7 +421,7 @@ export async function updateLavorazione(
     action: 'update',
     old_value: current,
     new_value: updated,
-    reason: payload.reason ?? null
+    reason: null
   });
 
   if (auditError) {
@@ -491,7 +490,7 @@ export async function createLavorazione(
 
 export async function closeLavorazione(
   supabase: SupabaseClient,
-  payload: { lavorazioneId: string; reason?: string | null },
+  payload: { lavorazioneId: string },
   actor: { userId: string; actorName: string }
 ): Promise<void> {
   const { data: current, error: currentError } = await supabase
@@ -528,7 +527,7 @@ export async function closeLavorazione(
     action: 'close',
     old_value: current,
     new_value: updated,
-    reason: payload.reason ?? null
+    reason: null
   });
 
   if (auditError) {
@@ -538,7 +537,7 @@ export async function closeLavorazione(
 
 export async function reopenLavorazione(
   supabase: SupabaseClient,
-  payload: { lavorazioneId: string; reason?: string | null },
+  payload: { lavorazioneId: string },
   actor: { userId: string; actorName: string }
 ): Promise<void> {
   const { data: current, error: currentError } = await supabase
@@ -574,7 +573,7 @@ export async function reopenLavorazione(
     action: 'reopen',
     old_value: current,
     new_value: updated,
-    reason: payload.reason ?? null
+    reason: null
   });
 
   if (auditError) {

@@ -28,7 +28,6 @@ export function EditWorkOrderModal({ lavorazione, onClose, onUpdated }: EditWork
   const [imballaggioSecondarioId, setImballaggioSecondarioId] = useState('');
   const [pesoPerCollo, setPesoPerCollo] = useState('');
   const [note, setNote] = useState('');
-  const [reason, setReason] = useState('');
   const [formData, setFormData] = useState<Awaited<ReturnType<typeof fetchNewWorkOrderFormData>> | null>(null);
 
   useEffect(() => {
@@ -43,7 +42,6 @@ export function EditWorkOrderModal({ lavorazione, onClose, onUpdated }: EditWork
     setImballaggioSecondarioId(lavorazione.imballaggioSecondarioId);
     setPesoPerCollo(String(lavorazione.pesoPerCollo));
     setNote(lavorazione.note ?? '');
-    setReason('');
     setFooterError('');
 
     let isCancelled = false;
@@ -129,7 +127,6 @@ export function EditWorkOrderModal({ lavorazione, onClose, onUpdated }: EditWork
           imballaggioSecondarioId,
           pesoPerCollo: parsedPeso,
           note: note.trim() || null,
-          reason: reason.trim() || null
         },
         { userId: user.id, actorName: user.user_metadata?.full_name ?? user.email ?? 'Utente' }
       );
@@ -244,15 +241,6 @@ export function EditWorkOrderModal({ lavorazione, onClose, onUpdated }: EditWork
                 />
               </label>
 
-              <label className="block text-sm font-medium text-slate-700">
-                Motivo modifica (opzionale)
-                <textarea
-                  value={reason}
-                  maxLength={300}
-                  onChange={(event) => setReason(event.target.value)}
-                  className="mt-1 min-h-16 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-                />
-              </label>
             </>
           ) : null}
         </main>
