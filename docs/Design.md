@@ -208,6 +208,16 @@ LINEA 1                    ⚠ MULTI-LAVORAZIONE
 [ + Apri Nuova Lavorazione ]   ghost, small
 ```
 
+
+### Pannello Gestione Lavorazioni
+
+- Sezione sotto la griglia linee, in card `surface` con bordo `secondary`
+- Mostra le lavorazioni più recenti con: linea, lotto, articolo, pedane, colli, peso
+- Azioni inline:
+  - `Chiudi` (danger) per lavorazioni aperte
+  - `Riapri` (outline) per lavorazioni chiuse
+- Feedback errore in alert rosso non bloccante sopra la griglia
+
 ---
 
 ## Modali
