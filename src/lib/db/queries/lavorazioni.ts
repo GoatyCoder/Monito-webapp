@@ -190,16 +190,17 @@ export async function fetchNewWorkOrderFormData(supabase: SupabaseClient): Promi
 export async function fetchDashboardData(supabase: SupabaseClient): Promise<DashboardData> {
   const today = new Date().toISOString().slice(0, 10);
 
-  const [lineeResponse, lavorazioniResponse, pedaneOggiResponse, scartiResponse] = await Promise.all([
+  const [lineeResponse, lavorazioniResponse, pedaneAllResponse, pedaneOggiResponse, scartiResponse] = await Promise.all([
     supabase.schema(REGISTRY_SCHEMA).from('linee').select('id, nome, ordine').eq('is_active', true).order('ordine'),
     supabase
       .schema(OPS_SCHEMA)
       .from('lavorazioni')
       .select(
-        'id, linea_id, aperta_at, chiusa_at, data_ingresso, lotto_ingresso, note, sigla_lotto:sigla_lotto_id(codice), articolo:articolo_id(nome), imballaggio:imballaggio_secondario_id(nome), pedane(id, numero_colli, peso_totale)'
+        'id, linea_id, sigla_lotto_id, articolo_id, imballaggio_secondario_id, aperta_at, chiusa_at, data_ingresso, lotto_ingresso, note'
       )
       .order('created_at', { ascending: false })
       .limit(120),
+    supabase.schema(OPS_SCHEMA).from('pedane').select('lavorazione_id, numero_colli, peso_totale'),
     supabase
       .schema(OPS_SCHEMA)
       .from('pedane')
@@ -214,20 +215,44 @@ export async function fetchDashboardData(supabase: SupabaseClient): Promise<Dash
       .lte('registrato_at', `${today}T23:59:59`)
   ]);
 
-  const firstError = [lineeResponse.error, lavorazioniResponse.error, pedaneOggiResponse.error, scartiResponse.error].find((error) =>
-    Boolean(error)
-  );
+  const firstError = [
+    lineeResponse.error,
+    lavorazioniResponse.error,
+    pedaneAllResponse.error,
+    pedaneOggiResponse.error,
+    scartiResponse.error
+  ].find((error) => Boolean(error));
 
   if (firstError) {
     throw new LavorazioniQueryError(firstError.message);
   }
 
+  const [sigleResponse, articoliResponse, imballaggiResponse] = await Promise.all([
+    supabase.schema(REGISTRY_SCHEMA).from('sigle_lotto').select('id, codice').eq('is_active', true),
+    supabase.schema(REGISTRY_SCHEMA).from('articoli').select('id, nome').eq('is_active', true),
+    supabase.schema(REGISTRY_SCHEMA).from('imballaggi_secondari').select('id, nome').eq('is_active', true)
+  ]);
+
+  const registryError = [sigleResponse.error, articoliResponse.error, imballaggiResponse.error].find((error) => Boolean(error));
+
+  if (registryError) {
+    throw new LavorazioniQueryError(registryError.message);
+  }
+
   const lineeById = new Map((lineeResponse.data ?? []).map((linea) => [linea.id, linea.nome]));
+  const sigleById = new Map((sigleResponse.data ?? []).map((item) => [item.id, item.codice]));
+  const articoliById = new Map((articoliResponse.data ?? []).map((item) => [item.id, item.nome]));
+  const imballaggiById = new Map((imballaggiResponse.data ?? []).map((item) => [item.id, item.nome]));
+
+  const pedaneByLavorazioneId = new Map<string, Array<{ numero_colli: number | null; peso_totale: number | null }>>();
+  for (const pedana of pedaneAllResponse.data ?? []) {
+    const existing = pedaneByLavorazioneId.get(pedana.lavorazione_id) ?? [];
+    existing.push({ numero_colli: pedana.numero_colli, peso_totale: pedana.peso_totale });
+    pedaneByLavorazioneId.set(pedana.lavorazione_id, existing);
+  }
+
   const mappedLavorazioni: DashboardLavorazioneItem[] = (lavorazioniResponse.data ?? []).map((row) => {
-    const pedane = row.pedane ?? [];
-    const siglaLotto = Array.isArray(row.sigla_lotto) ? row.sigla_lotto[0] : row.sigla_lotto;
-    const articolo = Array.isArray(row.articolo) ? row.articolo[0] : row.articolo;
-    const imballaggio = Array.isArray(row.imballaggio) ? row.imballaggio[0] : row.imballaggio;
+    const pedane = pedaneByLavorazioneId.get(row.id) ?? [];
     const stato = !row.aperta_at ? 'programmata' : row.chiusa_at ? 'terminata' : 'in_corso';
 
     return {
@@ -237,9 +262,9 @@ export async function fetchDashboardData(supabase: SupabaseClient): Promise<Dash
       stato,
       apertaAt: row.aperta_at,
       chiusaAt: row.chiusa_at,
-      lottoLabel: `${siglaLotto?.codice ?? '—'}-${String(row.lotto_ingresso).padStart(3, '0')}`,
-      articoloNome: articolo?.nome ?? '—',
-      imballaggioNome: imballaggio?.nome ?? '—',
+      lottoLabel: `${sigleById.get(row.sigla_lotto_id) ?? '—'}-${String(row.lotto_ingresso).padStart(3, '0')}`,
+      articoloNome: articoliById.get(row.articolo_id) ?? '—',
+      imballaggioNome: imballaggiById.get(row.imballaggio_secondario_id) ?? '—',
       note: row.note,
       pedaneCount: pedane.length,
       colliTotali: pedane.reduce((sum, pedana) => sum + Number(pedana.numero_colli ?? 0), 0),

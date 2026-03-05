@@ -13,13 +13,25 @@ export default async function DashboardPage() {
 
   const role = getUserRoleFromMetadata(user);
   const canEdit = canManageProduction(role);
-  const dashboardData = await fetchDashboardData(supabase);
+  try {
+    const dashboardData = await fetchDashboardData(supabase);
 
-  return (
-    <section className="space-y-6">
-      <DashboardOverview canEdit={canEdit} dashboardData={dashboardData} />
-      <DashboardActions canEdit={canEdit} />
-      <FabScarto canEdit={canEdit} />
-    </section>
-  );
+    return (
+      <section className="space-y-6">
+        <DashboardOverview canEdit={canEdit} dashboardData={dashboardData} />
+        <DashboardActions canEdit={canEdit} />
+        <FabScarto canEdit={canEdit} />
+      </section>
+    );
+  } catch (error) {
+    return (
+      <section className="space-y-4">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Errore durante il caricamento del cruscotto: {error instanceof Error ? error.message : 'errore imprevisto.'}
+        </div>
+        <DashboardActions canEdit={canEdit} />
+        <FabScarto canEdit={canEdit} />
+      </section>
+    );
+  }
 }

@@ -99,10 +99,12 @@ export function DashboardOverview({ canEdit, dashboardData }: DashboardOverviewP
                   <Button size="sm" variant="outline" disabled={busyId === item.id} onClick={() => handleReopen(item.id)}>
                     {busyId === item.id ? 'Riapertura…' : 'Riapri'}
                   </Button>
-                ) : (
+                ) : item.stato === 'in_corso' ? (
                   <Button size="sm" variant="destructive" disabled={busyId === item.id} onClick={() => handleClose(item.id)}>
                     {busyId === item.id ? 'Chiusura…' : 'Chiudi'}
                   </Button>
+                ) : (
+                  <span className="text-xs text-slate-500">Programmata</span>
                 )
               ) : null}
             </article>
