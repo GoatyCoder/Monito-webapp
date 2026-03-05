@@ -1,12 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { EditWorkOrderModal } from '@/components/dashboard/edit-work-order-modal';
 import { LineCard } from '@/components/dashboard/line-card';
 import { SummaryBar } from '@/components/dashboard/summary-bar';
 import { Button } from '@/components/ui/button';
-import { closeLavorazione, reopenLavorazione, type DashboardData } from '@/lib/db/queries/lavorazioni';
+import { OPS_SCHEMA } from '@/lib/config/db';
+import {
+  closeLavorazione,
+  reopenLavorazione,
+  startScheduledLavorazione,
+  type DashboardData,
+  type DashboardLavorazioneItem
+} from '@/lib/db/queries/lavorazioni';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
 
 type DashboardOverviewProps = {
@@ -14,49 +22,87 @@ type DashboardOverviewProps = {
   dashboardData: DashboardData;
 };
 
+type ActionMode = 'close' | 'reopen';
+
 export function DashboardOverview({ canEdit, dashboardData }: DashboardOverviewProps) {
   const router = useRouter();
-  const supabase = createSupabaseClient();
+  const [supabase] = useState(() => createSupabaseClient());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [reasonModal, setReasonModal] = useState<{ lavorazione: DashboardLavorazioneItem; mode: ActionMode } | null>(null);
+  const [editTarget, setEditTarget] = useState<DashboardLavorazioneItem | null>(null);
 
-  const handleClose = async (lavorazioneId: string) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard-lavorazioni-realtime')
+      .on('postgres_changes', { event: '*', schema: OPS_SCHEMA, table: 'lavorazioni' }, () => {
+        router.refresh();
+      })
+      .on('postgres_changes', { event: '*', schema: OPS_SCHEMA, table: 'pedane' }, () => {
+        router.refresh();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [router, supabase]);
+
+  const withUser = async () => {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('Sessione non disponibile. Esegui nuovamente il login.');
+    }
+
+    return {
+      userId: user.id,
+      actorName: user.user_metadata?.full_name ?? user.email ?? 'Utente'
+    };
+  };
+
+  const handleStartScheduled = async (lavorazioneId: string) => {
     try {
       setBusyId(lavorazioneId);
       setError('');
-      const {
-        data: { user }
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        throw new Error('Sessione non disponibile. Esegui nuovamente il login.');
-      }
-
-      await closeLavorazione(supabase, { lavorazioneId }, { userId: user.id, actorName: user.user_metadata?.full_name ?? user.email ?? 'Utente' });
+      await startScheduledLavorazione(supabase, { lavorazioneId }, await withUser());
       router.refresh();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'Errore durante la chiusura della lavorazione.');
+      setError(actionError instanceof Error ? actionError.message : 'Errore durante l\'avvio della lavorazione programmata.');
     } finally {
       setBusyId(null);
     }
   };
 
-  const handleReopen = async (lavorazioneId: string) => {
-    try {
-      setBusyId(lavorazioneId);
-      setError('');
-      const {
-        data: { user }
-      } = await supabase.auth.getUser();
+  const confirmReasonAction = async () => {
+    if (!reasonModal) {
+      return;
+    }
 
-      if (!user) {
-        throw new Error('Sessione non disponibile. Esegui nuovamente il login.');
+    try {
+      setBusyId(reasonModal.lavorazione.id);
+      setError('');
+
+      if (reasonModal.mode === 'close') {
+        await closeLavorazione(
+          supabase,
+          { lavorazioneId: reasonModal.lavorazione.id },
+          await withUser()
+        );
+      } else {
+        await reopenLavorazione(
+          supabase,
+          { lavorazioneId: reasonModal.lavorazione.id },
+          await withUser()
+        );
       }
 
-      await reopenLavorazione(supabase, { lavorazioneId }, { userId: user.id, actorName: user.user_metadata?.full_name ?? user.email ?? 'Utente' });
+      setReasonModal(null);
       router.refresh();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'Errore durante la riapertura della lavorazione.');
+      setError(actionError instanceof Error ? actionError.message : 'Errore durante l\'operazione richiesta.');
     } finally {
       setBusyId(null);
     }
@@ -76,7 +122,13 @@ export function DashboardOverview({ canEdit, dashboardData }: DashboardOverviewP
             lavorazioni={linea.lavorazioni}
             canEdit={canEdit}
             busyId={busyId}
-            onClose={handleClose}
+            onClose={(lavorazioneId) => {
+              const item = dashboardData.recenti.find((current) => current.id === lavorazioneId);
+              if (item) {
+                setReasonModal({ lavorazione: item, mode: 'close' });
+              }
+            }}
+            onEdit={setEditTarget}
           />
         ))}
       </div>
@@ -95,22 +147,79 @@ export function DashboardOverview({ canEdit, dashboardData }: DashboardOverviewP
                 </p>
               </div>
               {canEdit ? (
-                item.stato === 'terminata' ? (
-                  <Button size="sm" variant="outline" disabled={busyId === item.id} onClick={() => handleReopen(item.id)}>
-                    {busyId === item.id ? 'Riapertura…' : 'Riapri'}
-                  </Button>
-                ) : item.stato === 'in_corso' ? (
-                  <Button size="sm" variant="destructive" disabled={busyId === item.id} onClick={() => handleClose(item.id)}>
-                    {busyId === item.id ? 'Chiusura…' : 'Chiudi'}
-                  </Button>
-                ) : (
-                  <span className="text-xs text-slate-500">Programmata</span>
-                )
+                <div className="flex flex-wrap gap-2">
+                  {item.stato === 'terminata' ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busyId === item.id}
+                      onClick={() => setReasonModal({ lavorazione: item, mode: 'reopen' })}
+                    >
+                      {busyId === item.id ? 'Riapertura…' : 'Riapri'}
+                    </Button>
+                  ) : null}
+
+                  {item.stato === 'in_corso' ? (
+                    <>
+                      <Button size="sm" variant="secondary" onClick={() => setEditTarget(item)}>
+                        Modifica
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={busyId === item.id}
+                        onClick={() => setReasonModal({ lavorazione: item, mode: 'close' })}
+                      >
+                        {busyId === item.id ? 'Chiusura…' : 'Chiudi'}
+                      </Button>
+                    </>
+                  ) : null}
+
+                  {item.stato === 'programmata' ? (
+                    <Button size="sm" disabled={busyId === item.id} onClick={() => void handleStartScheduled(item.id)}>
+                      {busyId === item.id ? 'Avvio…' : 'Avvia'}
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </article>
           ))}
         </div>
       </section>
+
+      {reasonModal ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 md:items-center md:p-4">
+          <div className="w-full bg-white p-4 md:max-w-lg md:rounded-lg md:p-6">
+            <h3 className="text-lg font-semibold text-slate-900">{reasonModal.mode === 'close' ? 'Chiudi lavorazione' : 'Riapri lavorazione'}</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {reasonModal.lavorazione.lineaNome} · {reasonModal.lavorazione.lottoLabel} · {reasonModal.lavorazione.articoloNome}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setReasonModal(null);
+                            }}
+              >
+                Annulla
+              </Button>
+              <Button type="button" variant={reasonModal.mode === 'close' ? 'destructive' : 'default'} onClick={() => void confirmReasonAction()}>
+                {reasonModal.mode === 'close' ? 'Conferma chiusura' : 'Conferma riapertura'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <EditWorkOrderModal
+        lavorazione={editTarget}
+        onClose={() => setEditTarget(null)}
+        onUpdated={() => {
+          setEditTarget(null);
+          router.refresh();
+        }}
+      />
     </>
   );
 }

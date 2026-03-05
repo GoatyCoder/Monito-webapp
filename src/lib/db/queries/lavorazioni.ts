@@ -39,6 +39,12 @@ export type DashboardLavorazioneItem = {
   id: string;
   lineaId: string;
   lineaNome: string;
+  siglaLottoId: string;
+  articoloId: string;
+  imballaggioSecondarioId: string;
+  dataIngresso: string;
+  lottoIngresso: number;
+  pesoPerCollo: number;
   stato: 'programmata' | 'in_corso' | 'terminata';
   apertaAt: string | null;
   chiusaAt: string | null;
@@ -67,6 +73,17 @@ export type DashboardData = {
     lavorazioni: DashboardLavorazioneItem[];
   }>;
   recenti: DashboardLavorazioneItem[];
+};
+
+export type UpdateLavorazionePayload = {
+  lavorazioneId: string;
+  siglaLottoId: string;
+  dataIngresso: string;
+  lottoIngresso: number;
+  articoloId: string;
+  imballaggioSecondarioId: string;
+  pesoPerCollo: number;
+  note: string | null;
 };
 
 export class LavorazioniQueryError extends Error {
@@ -196,7 +213,7 @@ export async function fetchDashboardData(supabase: SupabaseClient): Promise<Dash
       .schema(OPS_SCHEMA)
       .from('lavorazioni')
       .select(
-        'id, linea_id, sigla_lotto_id, articolo_id, imballaggio_secondario_id, aperta_at, chiusa_at, data_ingresso, lotto_ingresso, note'
+        'id, linea_id, sigla_lotto_id, articolo_id, imballaggio_secondario_id, aperta_at, chiusa_at, data_ingresso, lotto_ingresso, peso_per_collo, note'
       )
       .order('created_at', { ascending: false })
       .limit(120),
@@ -259,6 +276,12 @@ export async function fetchDashboardData(supabase: SupabaseClient): Promise<Dash
       id: row.id,
       lineaId: row.linea_id,
       lineaNome: lineeById.get(row.linea_id) ?? 'Linea non trovata',
+      siglaLottoId: row.sigla_lotto_id,
+      articoloId: row.articolo_id,
+      imballaggioSecondarioId: row.imballaggio_secondario_id,
+      dataIngresso: row.data_ingresso,
+      lottoIngresso: row.lotto_ingresso,
+      pesoPerCollo: row.peso_per_collo,
       stato,
       apertaAt: row.aperta_at,
       chiusaAt: row.chiusa_at,
@@ -290,6 +313,120 @@ export async function fetchDashboardData(supabase: SupabaseClient): Promise<Dash
     })),
     recenti: mappedLavorazioni.slice(0, 24)
   };
+}
+
+export async function startScheduledLavorazione(
+  supabase: SupabaseClient,
+  payload: { lavorazioneId: string },
+  actor: { userId: string; actorName: string }
+): Promise<void> {
+  const { data: current, error: currentError } = await supabase
+    .schema(OPS_SCHEMA)
+    .from('lavorazioni')
+    .select('*')
+    .eq('id', payload.lavorazioneId)
+    .single();
+
+  if (currentError || !current) {
+    throw new LavorazioniQueryError(currentError?.message ?? 'Lavorazione non trovata.');
+  }
+
+  if (current.aperta_at) {
+    throw new LavorazioniQueryError('La lavorazione risulta già avviata.');
+  }
+
+  const now = new Date().toISOString();
+  const { data: updated, error: updateError } = await supabase
+    .schema(OPS_SCHEMA)
+    .from('lavorazioni')
+    .update({ aperta_at: now, chiusa_at: null, aperta_da: actor.userId })
+    .eq('id', payload.lavorazioneId)
+    .is('aperta_at', null)
+    .select('*')
+    .single();
+
+  if (updateError || !updated) {
+    throw new LavorazioniQueryError(updateError?.message ?? 'Avvio lavorazione programmata non riuscito.');
+  }
+
+  const { error: auditError } = await supabase.rpc('log_audit_event', {
+    actor_id: actor.userId,
+    actor_name: actor.actorName,
+    schema_name: OPS_SCHEMA,
+    table_name: 'lavorazioni',
+    record_id: payload.lavorazioneId,
+    action: 'open',
+    old_value: current,
+    new_value: updated,
+    reason: null
+  });
+
+  if (auditError) {
+    throw new LavorazioniQueryError(auditError.message);
+  }
+}
+
+export async function updateLavorazione(
+  supabase: SupabaseClient,
+  payload: UpdateLavorazionePayload,
+  actor: { userId: string; actorName: string }
+): Promise<void> {
+  const { data: current, error: currentError } = await supabase
+    .schema(OPS_SCHEMA)
+    .from('lavorazioni')
+    .select('*')
+    .eq('id', payload.lavorazioneId)
+    .single();
+
+  if (currentError || !current) {
+    throw new LavorazioniQueryError(currentError?.message ?? 'Lavorazione non trovata.');
+  }
+
+  if (!current.aperta_at || current.chiusa_at) {
+    throw new LavorazioniQueryError('Puoi modificare solo lavorazioni aperte.');
+  }
+
+  const updatePayload = {
+    sigla_lotto_id: payload.siglaLottoId,
+    data_ingresso: payload.dataIngresso,
+    lotto_ingresso: payload.lottoIngresso,
+    articolo_id: payload.articoloId,
+    imballaggio_secondario_id: payload.imballaggioSecondarioId,
+    peso_per_collo: payload.pesoPerCollo,
+    note: payload.note,
+    updated_at: new Date().toISOString(),
+    updated_by: actor.userId
+  };
+
+  const { data: updated, error: updateError } = await supabase
+    .schema(OPS_SCHEMA)
+    .from('lavorazioni')
+    .update(updatePayload)
+    .eq('id', payload.lavorazioneId)
+    .not('aperta_at', 'is', null)
+    .is('chiusa_at', null)
+    .select('*')
+    .single();
+
+  if (updateError || !updated) {
+    throw new LavorazioniQueryError(updateError?.message ?? 'Modifica lavorazione non riuscita.');
+  }
+
+  const { error: auditError } = await supabase.rpc('log_audit_event', {
+    actor_id: actor.userId,
+    actor_name: actor.actorName,
+    schema_name: OPS_SCHEMA,
+    table_name: 'lavorazioni',
+    record_id: payload.lavorazioneId,
+    action: 'update',
+    old_value: current,
+    new_value: updated,
+    reason: null
+  });
+
+  if (auditError) {
+    throw new LavorazioniQueryError(auditError.message);
+  }
 }
 
 export async function createLavorazione(
@@ -353,7 +490,7 @@ export async function createLavorazione(
 
 export async function closeLavorazione(
   supabase: SupabaseClient,
-  payload: { lavorazioneId: string; reason?: string | null },
+  payload: { lavorazioneId: string },
   actor: { userId: string; actorName: string }
 ): Promise<void> {
   const { data: current, error: currentError } = await supabase
@@ -390,7 +527,7 @@ export async function closeLavorazione(
     action: 'close',
     old_value: current,
     new_value: updated,
-    reason: payload.reason ?? null
+    reason: null
   });
 
   if (auditError) {
@@ -400,7 +537,7 @@ export async function closeLavorazione(
 
 export async function reopenLavorazione(
   supabase: SupabaseClient,
-  payload: { lavorazioneId: string; reason?: string | null },
+  payload: { lavorazioneId: string },
   actor: { userId: string; actorName: string }
 ): Promise<void> {
   const { data: current, error: currentError } = await supabase
@@ -436,7 +573,7 @@ export async function reopenLavorazione(
     action: 'reopen',
     old_value: current,
     new_value: updated,
-    reason: payload.reason ?? null
+    reason: null
   });
 
   if (auditError) {
