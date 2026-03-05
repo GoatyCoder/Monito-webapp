@@ -10,9 +10,10 @@ type LineCardProps = {
   canEdit: boolean;
   busyId: string | null;
   onClose: (lavorazioneId: string) => void;
+  onEdit: (lavorazione: DashboardLavorazioneItem) => void;
 };
 
-export function LineCard({ lineName, lavorazioni, canEdit, busyId, onClose }: LineCardProps) {
+export function LineCard({ lineName, lavorazioni, canEdit, busyId, onClose, onEdit }: LineCardProps) {
   const state = lavorazioni.length === 0 ? 'inactive' : lavorazioni.length === 1 ? 'active' : 'multi';
   const accent = state === 'inactive' ? 'border-slate-300' : state === 'active' ? 'border-emerald-500' : 'border-amber-400';
 
@@ -67,7 +68,7 @@ export function LineCard({ lineName, lavorazioni, canEdit, busyId, onClose }: Li
                 >
                   {busyId === lavorazione.id ? 'Chiusura…' : 'Chiudi'}
                 </Button>
-                <Button size="sm" variant="secondary" disabled>
+                <Button size="sm" variant="secondary" onClick={() => onEdit(lavorazione)}>
                   Modifica
                 </Button>
               </div>

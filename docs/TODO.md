@@ -182,12 +182,12 @@
 
 - [x] `SummaryBar` collegata ad aggregati runtime da DB (lavorazioni aperte, pedane oggi, colli oggi, scarto oggi)
 - [x] Card linea da dati reali (inactive / active / multi)
-- [ ] Subscriptions Supabase Realtime su lavorazioni e pedane
+- [x] Subscriptions Supabase Realtime su lavorazioni e pedane
 - [ ] Modal apertura lavorazione
-- [ ] Dialog conferma multi-lavorazione
-- [ ] Modal chiusura lavorazione
-- [ ] Modal riapertura lavorazione (con motivo opzionale, audit log)
-- [ ] Modal modifica lavorazione (audit log obbligatorio)
+- [x] Dialog conferma multi-lavorazione
+- [x] Modal chiusura lavorazione
+- [x] Modal riapertura lavorazione (con motivo opzionale, audit log)
+- [x] Modal modifica lavorazione (audit log obbligatorio)
 
 ---
 

@@ -36,7 +36,7 @@ type FormErrors = {
 };
 
 export function NewWorkOrderModal({ isOpen, onClose, onSuccess, formData }: NewWorkOrderModalProps) {
-  const supabase = createSupabaseClient();
+  const [supabase] = useState(() => createSupabaseClient());
   const [resolvedFormData, setResolvedFormData] = useState<WorkOrderFormData | null>(formData ?? null);
   const [lineaId, setLineaId] = useState('');
   const [siglaLottoId, setSiglaLottoId] = useState('');
@@ -174,6 +174,13 @@ export function NewWorkOrderModal({ isOpen, onClose, onSuccess, formData }: NewW
     setFooterError('');
     if (!validate()) {
       return;
+    }
+
+    if (lineWarning) {
+      const confirmed = window.confirm("La linea selezionata ha già una lavorazione aperta. Confermi l'apertura di una multi-lavorazione?");
+      if (!confirmed) {
+        return;
+      }
     }
 
     setSubmitMode(mode);
