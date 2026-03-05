@@ -6,6 +6,7 @@ import { Edit3, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { canManageProduction, getUserRoleFromMetadata } from '@/lib/auth/user';
 import { createSupabaseClient } from '@/lib/db/supabase-client';
 import {
   createLavorazione,
@@ -185,6 +186,11 @@ export function NewWorkOrderModal({ isOpen, onClose, onSuccess, formData }: NewW
 
       if (userError || !user) {
         throw new Error(userError?.message ?? 'Utente non autenticato.');
+      }
+
+      const role = getUserRoleFromMetadata(user);
+      if (!canManageProduction(role)) {
+        throw new Error('Non hai i permessi necessari per creare una lavorazione.');
       }
 
       const apertaAt = mode === 'open' ? new Date().toISOString() : null;

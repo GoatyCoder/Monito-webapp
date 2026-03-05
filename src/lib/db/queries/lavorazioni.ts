@@ -169,8 +169,7 @@ export async function createLavorazione(
     note: payload.note,
     aperta_at: payload.apertaAt,
     chiusa_at: null,
-    aperta_da: payload.apertaDa,
-    created_by: actor.userId
+    aperta_da: payload.apertaDa
   };
 
   const { data, error } = await supabase.schema(OPS_SCHEMA).from('lavorazioni').insert(insertPayload).select('*').single();

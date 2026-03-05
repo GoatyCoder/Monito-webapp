@@ -160,9 +160,9 @@ CREATE TABLE ops_YYYY.lavorazioni (
   lotto_ingresso            integer NOT NULL
                               CHECK (lotto_ingresso BETWEEN 1 AND 366),
   articolo_id               uuid NOT NULL REFERENCES registry.articoli(id),
-  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi(id),
+  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id),
   peso_per_collo_effettivo  numeric(8,3) NOT NULL
-                              CHECK (peso_per_collo_effettivo > 0),
+                              CHECK (peso_per_collo_effettivo >= 0),
   note                      text,
   aperta_at                 timestamptz,
   chiusa_at                 timestamptz,
@@ -431,7 +431,7 @@ ALTER TABLE ops_2026.lavorazioni
   ADD COLUMN  sigla_lotto_id            uuid
                 NOT NULL REFERENCES registry.sigle_lotto(id),
   ADD COLUMN  peso_per_collo_effettivo  numeric(8,3)
-                NOT NULL DEFAULT 0 CHECK (peso_per_collo_effettivo > 0),
+                NOT NULL DEFAULT 0 CHECK (peso_per_collo_effettivo >= 0),
   ADD COLUMN  note                      text,
   ALTER COLUMN aperta_at  DROP NOT NULL,
   ALTER COLUMN chiusa_at  DROP NOT NULL,
@@ -549,9 +549,9 @@ CREATE TABLE ops_2026.lavorazioni (
   lotto_ingresso            integer NOT NULL
                               CHECK (lotto_ingresso BETWEEN 1 AND 366),
   articolo_id               uuid NOT NULL REFERENCES registry.articoli(id),
-  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi(id),
+  imballaggio_secondario_id uuid NOT NULL REFERENCES registry.imballaggi_secondari(id),
   peso_per_collo_effettivo  numeric(8,3) NOT NULL
-                              CHECK (peso_per_collo_effettivo > 0),
+                              CHECK (peso_per_collo_effettivo >= 0),
   note                      text,
   aperta_at                 timestamptz,
   chiusa_at                 timestamptz,

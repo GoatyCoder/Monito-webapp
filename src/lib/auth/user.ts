@@ -48,12 +48,7 @@ export function getUserRoleFromMetadata(user: User | null): UserRole {
     return 'viewer';
   }
 
-  const roleCandidates = [
-    user.app_metadata?.role,
-    user.app_metadata?.roles,
-    user.user_metadata?.role,
-    user.user_metadata?.roles
-  ];
+  const roleCandidates = [user.app_metadata?.role, user.app_metadata?.roles];
 
   for (const candidate of roleCandidates) {
     const mappedRole = getRoleFromMetadataField(candidate);
