@@ -18,6 +18,9 @@ export default function HomePage() {
         <Link href="/anagrafiche" className="rounded border border-secondary px-4 py-2 text-secondary">
           Anagrafiche
         </Link>
+        <Link href="/settings" className="rounded border border-secondary px-4 py-2 text-secondary">
+          Impostazioni
+        </Link>
       </nav>
     </section>
   );

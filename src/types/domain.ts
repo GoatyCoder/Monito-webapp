@@ -69,19 +69,43 @@ export type SiglaLotto = EntityAuditFields & {
 };
 
 // ops_YYYY
-export type Lavorazione = EntityAuditFields & {
+export type Lavorazione = {
   id: string;
   lineaId: string;
-  siglaLotto: string;
+  siglaLottoId: string;
   dataIngresso: string;
+  lottoIngresso: number;
   articoloId: string;
   imballaggioSecondarioId: string;
-  stato: 'aperta' | 'chiusa';
-  apertaAt: string;
+  pesoPerCollo: number;
+  note: string | null;
+  apertaAt: string | null;
   chiusaAt: string | null;
-  apertaDa: string;
+  apertaDa: string | null;
 };
 
+// Lo stato della lavorazione è interamente derivato dai timestamp.
+// Non salvare mai un campo `stato` sul DB.
+export type LavorazioneStato = 'programmata' | 'in_corso' | 'terminata';
+
+export function getLavorazioneStato(l: Lavorazione): LavorazioneStato {
+  if (!l.apertaAt) return 'programmata';
+  if (!l.chiusaAt) return 'in_corso';
+  return 'terminata';
+}
+
+/**
+ * LOGICA PESO PEDANA (da implementare in futuro):
+ *
+ * pesoPerCollo della Lavorazione è il default per le pedane figlie.
+ * Alla creazione di una Pedana l'operatore può:
+ *   a) Inserire i colli → peso totale = colli × pesoPerCollo (calcolato, salvato)
+ *   b) Inserire il peso totale direttamente → l'interfaccia mostra
+ *      pesoPerCollo = pesoPedana / colli come informazione visiva (NON salvata)
+ *
+ * Sul DB la Pedana salva SOLO pesoPedana (totale).
+ * Il campo pesoPerCollo della pedana NON viene persistito.
+ */
 export type Pedana = EntityAuditFields & {
   id: string;
   codicePedana: string;

@@ -12,7 +12,7 @@
 - [x] Aggiungere `@supabase/supabase-js` e `@supabase/ssr` in `package.json`
 - [x] Creare `src/lib/config/db.ts`:
 ```typescript
-  export const OPS_SCHEMA      = 'ops_2025' as const;
+  export const OPS_SCHEMA      = 'ops_2026' as const;
   export const REGISTRY_SCHEMA = 'registry' as const;
   export const AUDIT_SCHEMA    = 'audit' as const;
 ```
@@ -154,6 +154,17 @@
   NEXT_PUBLIC_ENABLE_OFFLINE="true"
   # Schema operativo: configurato in src/lib/config/db.ts — aggiornare ogni 1 gennaio
 ```
+
+---
+
+
+## DB / Migration
+
+- [ ] Eseguire migration `lavorazioni` su Supabase:
+      rimozione stato/sigla_lotto, aggiunta sigla_lotto_id FK,
+      peso_per_collo, note, constraints temporali.
+      ATTENZIONE: verificare assenza righe con chiusa_at valorizzato
+      e aperta_at NULL prima di applicare il constraint.
 
 ---
 
